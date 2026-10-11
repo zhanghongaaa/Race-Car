@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>六车争霸赛</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: full-height stage with a canvas track view, light timing-board HUD on top, touch pad below on phones */
+:root {
+  color-scheme: dark;
+  --ink: #12181c;
+  --ink-2: #1d262c;
+  --line: #34424b;
+  --paper: #eef1f2;
+  --paper-ink: #141b1f;
+  --muted: #7b8a92;
+  --amber: #ffb000;
+  --red: #e2412f;
+  --grass: #4a8650;
+  --grass-b: #538f59;
+  --asphalt: #383d42;
+  --display: 'Chakra Petch', 'Noto Sans SC', system-ui, sans-serif;
+  --body: 'Noto Sans SC', system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--body);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#stage { flex: 1; min-height: 0; position: relative; background: var(--grass); }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.board {
+  background: rgba(238, 241, 242, 0.93);
+  color: var(--paper-ink);
+  border-radius: 8px;
+  box-shadow: 0 1px 0 rgba(0,0,0,.25);
+}
+#strip {
+  position: absolute; top: 10px; left: 16px; right: 16px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 12px;
+  font-family: var(--display); font-weight: 700; font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+#timer { min-width: 64px; }
+#dist { min-width: 84px; text-align: right; }
+#bar { flex: 1; min-width: 0; height: 6px; border-radius: 3px; background: #c2cbd0; position: relative; }
+#bar .tick { position: absolute; left: 50%; top: -5px; width: 2px; height: 16px; background: var(--paper-ink); opacity: .55; }
+#bar .dot {
+  position: absolute; top: 50%; width: 10px; height: 10px; border-radius: 50%;
+  border: 1.5px solid #fff; transform: translate(-50%, -50%);
+}
+#bar .dot.me { width: 14px; height: 14px; z-index: 2; border-color: var(--paper-ink); }
+
+#tower {
+  position: absolute; top: 58px; left: 16px; margin: 0; padding: 4px; list-style: none;
+  font-size: 12px; min-width: 104px;
+}
+#tower li { display: flex; align-items: center; gap: 7px; padding: 3px 7px; border-radius: 5px; }
+#tower li.me { background: var(--ink); color: #fff; }
+#tower b { font-family: var(--display); width: 12px; text-align: right; }
+#tower i { width: 9px; height: 9px; border-radius: 2px; border: 1px solid rgba(0,0,0,.35); }
+
+#dash {
+  position: absolute; left: 16px; bottom: 12px; display: flex; align-items: flex-end; gap: 10px;
+}
+#dash .chip {
+  background: rgba(18, 24, 28, 0.82); color: var(--paper); border-radius: 8px; padding: 6px 12px;
+  font-family: var(--display); font-weight: 700;
+}
+#spd { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
+#spd small { font-size: 11px; color: var(--muted); margin-left: 4px; letter-spacing: .08em; }
+#lap { font-size: 13px; }
+
+#lights {
+  position: absolute; left: 50%; top: 16%; transform: translateX(-50%);
+  display: flex; gap: 10px; padding: 12px 16px; background: rgba(18,24,28,.88); border-radius: 12px;
+}
+#lights span { width: 22px; height: 22px; border-radius: 50%; background: #3b2427; }
+#lights span.on { background: #ff2a18; box-shadow: 0 0 14px 2px rgba(255,42,24,.7); }
+#go {
+  position: absolute; left: 50%; top: 16%; transform: translateX(-50%);
+  font-family: var(--display); font-weight: 700; font-size: 44px; letter-spacing: .06em;
+  color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.45);
+}
+
+#panel {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(18, 24, 28, 0.55); overflow: auto;
+}
+.card {
+  background: var(--paper); color: var(--paper-ink); border-radius: 10px;
+  padding: 20px; width: 100%; max-width: 400px; box-sizing: border-box; max-height: 100%; overflow: auto;
+}
+.eyebrow { font-family: var(--display); font-weight: 700; font-size: 12px; letter-spacing: .16em; color: #5b6a72; margin: 0 0 4px; }
+.card h1, .card h2 { margin: 0 0 8px; font-size: 30px; line-height: 1.15; text-wrap: balance; }
+.card p { margin: 0 0 14px; font-size: 14px; line-height: 1.6; color: #3a474e; }
+.card .small { font-size: 12px; color: #5b6a72; }
+.group-label { font-size: 12px; font-weight: 700; color: #3a474e; margin: 0 0 6px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+.seg button {
+  font: inherit; font-size: 14px; font-weight: 700; padding: 9px 0; border-radius: 6px; cursor: pointer;
+  background: #dde3e6; color: var(--paper-ink); border: 2px solid transparent;
+}
+.seg button[aria-checked="true"] { background: var(--paper-ink); color: #fff; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 12px; }
+.check input { width: 18px; height: 18px; accent-color: var(--paper-ink); }
+.btn {
+  font: inherit; font-weight: 700; font-size: 16px; padding: 12px 16px; border-radius: 8px; cursor: pointer;
+  border: 0; background: var(--amber); color: var(--paper-ink); width: 100%;
+}
+.btn.alt { background: #dde3e6; margin-top: 8px; }
+#startBtn, #againBtn { position: sticky; bottom: 0; box-shadow: 0 0 0 10px var(--paper); }
+#nojs { background: #ffd9d4; color: #5a1710; border-radius: 6px; padding: 8px 10px; font-size: 13px; line-height: 1.5; margin: 0 0 12px; }
+:focus-visible { outline: 3px solid #2f6fdb; outline-offset: 2px; }
+#results { list-style: none; margin: 0 0 12px; padding: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+#results li { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 6px; }
+#results li.me { background: var(--paper-ink); color: #fff; }
+#results b { font-family: var(--display); width: 14px; text-align: right; }
+#results i { width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgba(0,0,0,.35); }
+#results span.n { flex: 1; min-width: 0; }
+#results span.t { font-family: var(--display); font-weight: 700; font-size: 13px; }
+
+#pad {
+  display: none; flex: none; justify-content: space-between; gap: 12px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--ink);
+}
+#pad .grp { display: flex; gap: 10px; }
+#pad button {
+  width: 76px; height: 68px; border-radius: 12px; border: 1px solid var(--line); background: var(--ink-2);
+  color: var(--paper); font: 700 15px var(--body); touch-action: none; display: flex; align-items: center; justify-content: center;
+}
+#pad button.on { background: var(--amber); color: var(--paper-ink); border-color: var(--amber); }
+#pad button svg { width: 28px; height: 28px; }
+@media (pointer: coarse), (max-width: 700px) { #pad { display: flex; } }
+#rot { display: none; background: #ffe7ad; color: var(--paper-ink); border-radius: 6px; padding: 8px 10px; font-size: 13px; line-height: 1.5; margin: 0 0 12px; }
+@media (orientation: portrait) and (pointer: coarse) { #rot { display: block; } }
+#tiltMsg { font-size: 12px; color: #5b6a72; margin: -6px 0 12px; line-height: 1.5; }
+#tiltMsg:empty { display: none; }
+@media (orientation: landscape) and (max-height: 560px) {
+  #pad {
+    position: fixed; left: 0; right: 0; bottom: 0; background: transparent; pointer-events: none;
+    padding: 0 calc(16px + env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
+  }
+  #pad button { pointer-events: auto; width: 96px; height: 84px; background: rgba(29, 38, 44, 0.58); }
+  #pad button.on { background: var(--amber); }
+  #dash { left: 50%; transform: translateX(-50%); }
+  .card { padding: 14px 16px; max-width: 520px; }
+  .card h1, .card h2 { font-size: 24px; }
+  .card p { margin-bottom: 10px; }
+  #tower { top: 54px; }
+}
+@media (max-width: 420px) { #tower { font-size: 11px; min-width: 94px; } #lights span { width: 18px; height: 18px; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);}body{margin:0}</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="strip" class="board">
+    <span id="timer">0:00.0</span>
+    <div id="bar"><div class="tick"></div></div>
+    <span id="dist">0 / 2000 米</span>
+  </div>
+  <ol id="tower" class="board" aria-label="实时名次"></ol>
+  <div id="dash">
+    <div class="chip" id="spd">0<small>KM/H</small></div>
+    <div class="chip" id="lap">第 1 / 2 圈</div>
+  </div>
+  <div id="lights" hidden><span></span><span></span><span></span><span></span><span></span></div>
+  <div id="go" hidden>出发！</div>
+
+  <div id="panel">
+    <div class="card" id="menuCard">
+      <p class="eyebrow">GRAND PRIX · 2000 M</p>
+      <h1>六车争霸赛</h1>
+      <p id="rot">手机请横过来玩，视野更宽。如果画面没跟着转，先打开系统的自动旋转。</p>
+      <p>你开 1 辆车，电脑开另外 5 辆。赛道一圈 1000 米，跑 2 圈共 2000 米，先冲过终点线的获胜。视角跟着车头走，车头永远朝上。</p>
+      <p class="group-label" id="dlabel">电脑强度</p>
+      <div class="seg" role="radiogroup" aria-labelledby="dlabel" id="diff">
+        <button type="button" role="radio" aria-checked="false" data-d="0">轻松</button>
+        <button type="button" role="radio" aria-checked="true" data-d="1">标准</button>
+        <button type="button" role="radio" aria-checked="false" data-d="2">激烈</button>
+      </div>
+      <label class="check" for="auto"><input type="checkbox" id="auto"> 自动油门（只需要转向和刹车）</label>
+      <label class="check" for="tilt"><input type="checkbox" id="tilt"> 重力感应转向（像方向盘一样转动手机）</label>
+      <p id="tiltMsg"></p>
+      <p class="small">键盘：← → 转向，↑ 油门，↓ 刹车。手机：用屏幕两侧的按钮。弯前记得松油门，冲出赛道会明显变慢。</p>
+      <p class="small" id="best"></p>
+      <p id="nojs">如果这行字一直在，说明当前打开方式没有运行脚本（比如预览窗口或某些内置浏览器）。请改用 Safari、Chrome 或系统浏览器打开这个文件。</p>
+      <button class="btn" id="startBtn" type="button">开始比赛</button>
+    </div>
+    <div class="card" id="resCard" hidden>
+      <p class="eyebrow">比赛结束</p>
+      <h2 id="resTitle">第 1 名</h2>
+      <p id="resSub"></p>
+      <ol id="results"></ol>
+      <button class="btn" id="againBtn" type="button">再来一局</button>
+      <button class="btn alt" id="menuBtn" type="button">换强度或设置</button>
+    </div>
+  </div>
+</div>
+
+<div id="pad">
+  <div class="grp">
+    <button type="button" id="bL" aria-label="向左转"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 4 5 12l10 8z"/></svg></button>
+    <button type="button" id="bR" aria-label="向右转"><svg viewBox="0 0 24 24" fill="currentColor"><path d="m9 4 10 8-10 8z"/></svg></button>
+  </div>
+  <div class="grp">
+    <button type="button" id="bB">刹车</button>
+    <button type="button" id="bG">油门</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var nojs = document.getElementById('nojs');
+  nojs.hidden = true;
+  window.addEventListener('error', function (e) {
+    nojs.hidden = false;
+    nojs.textContent = '程序出错：' + (e.message || '未知错误') + '（请把这行字发给我）';
+  });
+  var TAU = Math.PI * 2;
+  var RACE = 2000, L = 1000, M = 500, DS = L / M;
+  var TRACK_W = 24, HALF = TRACK_W / 2, WALL = 30, VMAX = 62, VAI = 60;
+  var CAR_S = 1.35;
+
+  function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  var C = { grass: css('--grass'), grassB: css('--grass-b'), asphalt: css('--asphalt'), red: css('--red'), amber: css('--amber'), ink: css('--ink') };
+
+  /* ---------- track ---------- */
+  var raw = [[0,80],[110,80],[165,68],[190,30],[175,-10],[135,-25],[105,-10],[80,10],[55,0],[40,-30],[10,-60],[-40,-70],[-85,-55],[-110,-25],[-100,5],[-120,35],[-125,65],[-100,80],[-50,80]];
+  function cr(p0, p1, p2, p3, t) {
+    var o = [];
+    for (var k = 0; k < 2; k++) {
+      o.push(0.5 * ((2 * p1[k]) + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t * t + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t * t * t));
+    }
+    return o;
+  }
+  var dense = [], n = raw.length;
+  for (var i = 0; i < n; i++) for (var s = 0; s < 30; s++) dense.push(cr(raw[(i + n - 1) % n], raw[i], raw[(i + 1) % n], raw[(i + 2) % n], s / 30));
+  var cum = [0];
+  for (i = 1; i <= dense.length; i++) {
+    var a = dense[i - 1], b = dense[i % dense.length];
+    cum.push(cum[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1]));
+  }
+  var rawLen = cum[cum.length - 1], sc0 = L / rawLen;
+  var cx = [], cy = [], tx = [], ty = [], nx = [], ny = [], ang = [], kap = [], vc = [], vt = [];
+  var j = 0;
+  for (i = 0; i < M; i++) {
+    var sd = i * rawLen / M;
+    while (cum[j + 1] < sd) j++;
+    var f = (sd - cum[j]) / (cum[j + 1] - cum[j]);
+    var p = dense[j], q = dense[(j + 1) % dense.length];
+    cx.push((p[0] + (q[0] - p[0]) * f) * sc0);
+    cy.push((p[1] + (q[1] - p[1]) * f) * sc0);
+  }
+  function wrapA(x) { while (x > Math.PI) x -= TAU; while (x < -Math.PI) x += TAU; return x; }
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  for (i = 0; i < M; i++) {
+    var ax = cx[(i + 1) % M] - cx[(i + M - 1) % M], ay = cy[(i + 1) % M] - cy[(i + M - 1) % M];
+    var h = Math.hypot(ax, ay);
+    tx.push(ax / h); ty.push(ay / h); nx.push(-ay / h); ny.push(ax / h);
+    ang.push(Math.atan2(ay, ax));
+  }
+  var kraw = [];
+  for (i = 0; i < M; i++) kraw.push(Math.abs(wrapA(ang[(i + 2) % M] - ang[(i + M - 2) % M])) / (4 * DS));
+  for (i = 0; i < M; i++) {
+    var sum = 0;
+    for (var d = -3; d <= 3; d++) sum += kraw[(i + d + M) % M];
+    kap.push(sum / 7);
+  }
+  for (i = 0; i < M; i++) {
+    var k = kap[i], v;
+    if (k < 0.001) v = VAI;
+    else {
+      var aa = k / 22;
+      v = (-k + Math.sqrt(k * k + 4 * aa * 2.16)) / (2 * aa);
+    }
+    vc.push(clamp(v, 16, VAI));
+  }
+  vt = vc.slice();
+  for (var pass = 0; pass < 3; pass++) {
+    for (i = M - 1; i >= -M; i--) {
+      var ii = ((i % M) + M) % M, nn = (ii + 1) % M;
+      var lim = Math.sqrt(vt[nn] * vt[nn] + 2 * 36 * DS);
+      if (lim < vt[ii]) vt[ii] = lim;
+    }
+  }
+  function pointAt(sv) {
+    sv = ((sv % L) + L) % L;
+    var i0 = Math.floor(sv / DS) % M, i1 = (i0 + 1) % M, fr = sv / DS - Math.floor(sv / DS);
+    return {
+      x: cx[i0] + (cx[i1] - cx[i0]) * fr, y: cy[i0] + (cy[i1] - cy[i0]) * fr,
+      nx: nx[i0], ny: ny[i0], a: ang[i0]
+    };
+  }
+
+  /* Path2D shapes in world units */
+  var pAsphalt = new Path2D(), pKerbL = new Path2D(), pKerbR = new Path2D(), pWallL = new Path2D(), pWallR = new Path2D(), pCenter = new Path2D(), pMini = new Path2D();
+  function loop(path, off) {
+    for (var i = 0; i < M; i++) {
+      var x = cx[i] + nx[i] * off, y = cy[i] + ny[i] * off;
+      if (i === 0) path.moveTo(x, y); else path.lineTo(x, y);
+    }
+    path.closePath();
+  }
+  loop(pAsphalt, HALF); loop(pAsphalt, -HALF);
+  loop(pKerbL, HALF + 0.9); loop(pKerbR, -HALF - 0.9);
+  loop(pWallL, WALL); loop(pWallR, -WALL);
+  loop(pCenter, 0);
+  var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+  for (i = 0; i < M; i++) { minX = Math.min(minX, cx[i]); maxX = Math.max(maxX, cx[i]); minY = Math.min(minY, cy[i]); maxY = Math.max(maxY, cy[i]); }
+
+  /* ---------- cars ---------- */
+  var AI_DEF = [
+    { name: '闪电', c1: '#d83a2c', c2: '#ffffff', skill: 0.985 },
+    { name: '红隼', c1: '#2f6fdb', c2: '#ffd23f', skill: 0.965 },
+    { name: '北风', c1: '#1f9e8a', c2: '#0e2b2a', skill: 0.945 },
+    { name: '银狐', c1: '#8e44ad', c2: '#f1e4f7', skill: 0.925 },
+    { name: '雷霆', c1: '#e9ecec', c2: '#222a2e', skill: 0.905 }
+  ];
+  var DIFF_MUL = [0.93, 1.0, 1.035];
+  var diff = 1;
+  var cars = [], player, order = [];
+  var state = 'menu', cdT = 0, raceT = 0, resT = 0;
+
+  function makeCar(def, slot, isPlayer) {
+    var row = Math.floor(slot / 2), col = slot % 2;
+    var sg = -(8 + row * 10) - (col ? 5 : 0);
+    var pt = pointAt(sg);
+    var lat = col ? 5.5 : -5.5;
+    var c = {
+      name: def.name, c1: def.c1, c2: def.c2, skill: def.skill, isPlayer: isPlayer, ai: !isPlayer,
+      x: pt.x + pt.nx * lat, y: pt.y + pt.ny * lat, angle: pt.a, speed: 0, st: 0,
+      s: ((sg % L) + L) % L, dist: sg, lat: lat, idx: 0, fin: false, finT: 0,
+      off: lat * 0.5, offT: lat * 0.5, baseOff: lat * 0.5
+    };
+    c.idx = Math.round(c.s / DS) % M;
+    return c;
+  }
+  function reset() {
+    var slots = [0, 1, 2, 4, 5];
+    cars = [];
+    player = makeCar({ name: '你', c1: '#ffb000', c2: '#141b1f', skill: 1 }, 3, true);
+    cars.push(player);
+    AI_DEF.forEach(function (d, i) {
+      var cc = makeCar(d, slots[i], false);
+      cc.skill = d.skill * DIFF_MUL[diff];
+      cars.push(cc);
+    });
+    order = cars.slice();
+    raceT = 0; cdT = 0; resT = 0;
+    cam.x = player.x; cam.y = player.y;
+    buildBar(); buildTower(true);
+  }
+
+  /* ---------- input ---------- */
+  var keys = {}, touch = { l: false, r: false, g: false, b: false };
+  var autoGas = false;
+  window.addEventListener('keydown', function (e) {
+    var k = e.key;
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].indexOf(k) >= 0) e.preventDefault();
+    keys[k.toLowerCase()] = true;
+    if (k === 'Enter' && !(e.target && e.target.tagName === 'BUTTON') && state !== 'countdown' && state !== 'racing') {
+      if (!document.getElementById('panel').hidden) startRace();
+    }
+  });
+  window.addEventListener('keyup', function (e) { keys[e.key.toLowerCase()] = false; });
+  window.addEventListener('blur', function () { keys = {}; touch.l = touch.r = touch.g = touch.b = false; });
+  function bindBtn(id, key) {
+    var el = document.getElementById(id);
+    function on(e) { e.preventDefault(); touch[key] = true; el.classList.add('on'); try { el.setPointerCapture(e.pointerId); } catch (x) {} }
+    function off(e) { e.preventDefault(); touch[key] = false; el.classList.remove('on'); }
+    el.addEventListener('pointerdown', on);
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointercancel', off);
+    el.addEventListener('lostpointercapture', off);
+    el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+  bindBtn('bL', 'l'); bindBtn('bR', 'r'); bindBtn('bG', 'g'); bindBtn('bB', 'b');
+
+  /* ---------- tilt steering (best effort; the viewer may block motion sensors) ---------- */
+  var tilt = { on: false, got: false, neutral: null, v: 0 };
+  function onOrient(e) {
+    if (e.beta == null || e.gamma == null) return;
+    var b = e.beta * Math.PI / 180, g = e.gamma * Math.PI / 180;
+    var roll = Math.atan2(-Math.cos(b) * Math.sin(g), Math.sin(b));
+    tilt.got = true;
+    if (tilt.neutral === null || state === 'menu' || state === 'countdown') tilt.neutral = roll;
+    var v = -wrapA(roll - tilt.neutral) / (28 * Math.PI / 180);
+    if (Math.abs(v) < 0.11) v = 0;
+    tilt.v = clamp(v, -1, 1);
+  }
+  var tiltMsg = document.getElementById('tiltMsg');
+  function enableTilt() {
+    tiltMsg.textContent = '正在连接重力感应…';
+    function attach() {
+      window.addEventListener('deviceorientation', onOrient);
+      tilt.on = true; tilt.got = false; tilt.neutral = null;
+      setTimeout(function () {
+        if (!tilt.on) return;
+        tiltMsg.textContent = tilt.got
+          ? '重力感应已连接。横持手机，顺时针转是右转，逆时针转是左转。开跑前把手机端正拿稳，会以那个姿势作为中间位置。'
+          : '这里没有收到重力感应数据（有的环境会屏蔽传感器），请用触屏按钮转向。';
+      }, 1800);
+    }
+    try {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(function (r) {
+          if (r === 'granted') attach(); else { tiltMsg.textContent = '没有获得重力感应权限，请用触屏按钮转向。'; document.getElementById('tilt').checked = false; }
+        }).catch(function () { tiltMsg.textContent = '无法开启重力感应，请用触屏按钮转向。'; document.getElementById('tilt').checked = false; });
+      } else if (window.DeviceOrientationEvent) attach();
+      else { tiltMsg.textContent = '这台设备不支持重力感应。'; document.getElementById('tilt').checked = false; }
+    } catch (err) { tiltMsg.textContent = '无法开启重力感应，请用触屏按钮转向。'; document.getElementById('tilt').checked = false; }
+  }
+  function disableTilt() {
+    window.removeEventListener('deviceorientation', onOrient);
+    tilt.on = false; tilt.got = false; tilt.v = 0; tiltMsg.textContent = '';
+  }
+  document.getElementById('tilt').addEventListener('change', function (e) { if (e.target.checked) enableTilt(); else disableTilt(); });
+
+  /* ---------- physics ---------- */
+  function step(c, dt, steer, thr, brk) {
+    var off = Math.abs(c.lat) > HALF + 0.6;
+    var a = thr * 30 - brk * 55 - 0.0078 * c.speed * c.speed - 0.8;
+    if (off) a -= 0.9 * c.speed + 4;
+    var turn = steer * 2.4 / (1 + c.speed / 22) * Math.min(1, c.speed / 5);
+    a -= Math.abs(turn) * c.speed * 0.10;
+    c.speed = Math.max(0, c.speed + a * dt);
+    c.angle += turn * dt;
+    c.x += Math.cos(c.angle) * c.speed * dt;
+    c.y += Math.sin(c.angle) * c.speed * dt;
+  }
+  function locate(c) {
+    var best = 1e12, bi = c.idx;
+    for (var d = -14; d <= 14; d++) {
+      var i = (c.idx + d + M) % M, dx = c.x - cx[i], dy = c.y - cy[i], q = dx * dx + dy * dy;
+      if (q < best) { best = q; bi = i; }
+    }
+    c.idx = bi;
+    var ex = c.x - cx[bi], ey = c.y - cy[bi];
+    c.lat = ex * nx[bi] + ey * ny[bi];
+    var s = bi * DS + (ex * tx[bi] + ey * ty[bi]);
+    var ds = s - c.s;
+    ds = ((ds + L / 2) % L + L) % L - L / 2;
+    c.s = ((s % L) + L) % L;
+    c.dist += ds;
+    c.lastDs = ds;
+    if (Math.abs(c.lat) > WALL) {
+      var over = Math.abs(c.lat) - WALL, sgn = c.lat > 0 ? 1 : -1;
+      c.x -= nx[bi] * over * sgn; c.y -= ny[bi] * over * sgn;
+      c.lat = WALL * sgn;
+      c.speed *= 0.86;
+    }
+  }
+  function sdist(a, b) { return ((b - a + L / 2) % L + L) % L - L / 2; }
+
+  function aiControl(c, dt) {
+    var sp = c.speed;
+    var look = Math.max(2, Math.round((5 + sp * 0.18) / DS));
+    var jx = (c.idx + look) % M;
+    var px = cx[jx] + nx[jx] * c.off, py = cy[jx] + ny[jx] * c.off;
+    var err = wrapA(Math.atan2(py - c.y, px - c.x) - c.angle);
+    var steer = clamp(err * 2.5, -1, 1);
+    var gap = c.dist - player.dist, rb = 1;
+    if (!c.isPlayer) {
+      if (gap > 60) rb = 1 - Math.min(0.05, (gap - 60) / 2000);
+      else if (gap < -60) rb = 1 + Math.min(0.04, (-gap - 60) / 2000);
+    }
+    var target = vt[c.idx] * c.skill * rb;
+    if (Math.abs(c.lat) > HALF) target = Math.min(target, 22);
+    var block = null, bestD = 18;
+    for (var i = 0; i < cars.length; i++) {
+      var o = cars[i];
+      if (o === c) continue;
+      var d = sdist(c.s, o.s);
+      if (d > 0 && d < bestD && Math.abs(o.lat - c.lat) < 4.6) { block = o; bestD = d; }
+    }
+    if (block) {
+      var side = c.lat >= block.lat ? 1 : -1;
+      c.offT = clamp(block.lat + side * 5.4, -9, 9);
+      var lateral = Math.abs(c.lat - block.lat);
+      if (lateral < 3.6) target = Math.min(target, block.speed * 0.97 + bestD * 0.25);
+    } else {
+      c.offT = c.baseOff;
+    }
+    c.off += (c.offT - c.off) * Math.min(1, dt * 1.6);
+    var thr = clamp((target - sp) / 3, 0, 1);
+    var brk = sp > target + 2 ? clamp((sp - target) / 12, 0, 1) : 0;
+    c.st += (steer - c.st) * Math.min(1, dt * 12);
+    step(c, dt, c.st, thr, brk);
+  }
+  function playerControl(c, dt) {
+    var left = keys['arrowleft'] || keys['a'] || touch.l;
+    var right = keys['arrowright'] || keys['d'] || touch.r;
+    var brake = keys['arrowdown'] || keys['s'] || keys[' '] || touch.b;
+    var gas = keys['arrowup'] || keys['w'] || touch.g || autoGas;
+    var tgt = (right ? 1 : 0) - (left ? 1 : 0);
+    if (tilt.on && tilt.got && !left && !right) tgt = tilt.v;
+    c.st += (tgt - c.st) * Math.min(1, dt * 9);
+    step(c, dt, c.st, (gas && !brake) ? 1 : 0, brake ? 1 : 0);
+  }
+  function collide(a, b) {
+    var ca = Math.cos(a.angle), sa = Math.sin(a.angle), cb = Math.cos(b.angle), sb = Math.sin(b.angle);
+    var pa = [[a.x + ca * 1.9, a.y + sa * 1.9], [a.x - ca * 1.9, a.y - sa * 1.9]];
+    var pb = [[b.x + cb * 1.9, b.y + sb * 1.9], [b.x - cb * 1.9, b.y - sb * 1.9]];
+    var hit = false;
+    for (var i = 0; i < 2; i++) for (var j = 0; j < 2; j++) {
+      var dx = pb[j][0] - pa[i][0], dy = pb[j][1] - pa[i][1], dd = Math.hypot(dx, dy);
+      if (dd < 3.2 && dd > 1e-4) {
+        var push = (3.2 - dd) / 2, ux = dx / dd, uy = dy / dd;
+        a.x -= ux * push; a.y -= uy * push; b.x += ux * push; b.y += uy * push;
+        hit = true;
+      }
+    }
+    if (hit) {
+      var avg = (a.speed + b.speed) / 2;
+      a.speed += (avg - a.speed) * 0.04; b.speed += (avg - b.speed) * 0.04;
+      var back = sdist(a.s, b.s) > 0 ? a : b;
+      back.speed *= 0.994;
+    }
+  }
+
+  /* ---------- state / flow ---------- */
+  var lightsEl = document.getElementById('lights'), goEl = document.getElementById('go'), panel = document.getElementById('panel');
+  var lightDots = lightsEl.querySelectorAll('span');
+  var goT = 0;
+
+  function update(dt) {
+    if (state === 'countdown') {
+      cdT += dt;
+      for (var i = 0; i < 5; i++) lightDots[i].className = cdT >= 0.6 + 0.8 * i ? 'on' : '';
+      if (cdT >= 4.8) {
+        state = 'racing'; lightsEl.hidden = true; goEl.hidden = false; goT = 0.9;
+      }
+      return;
+    }
+    if (state !== 'racing' && state !== 'finished') return;
+    if (goT > 0) { goT -= dt; if (goT <= 0) goEl.hidden = true; }
+    raceT += dt;
+    for (var k = 0; k < cars.length; k++) {
+      var c = cars[k], prev = c.dist;
+      if (c.ai || c.fin && c.isPlayer) {
+        if (c.isPlayer) { c.skill = 0.78; }
+        aiControl(c, dt);
+      } else playerControl(c, dt);
+      locate(c);
+      if (!c.fin && c.dist >= RACE) {
+        c.fin = true;
+        c.finT = raceT - dt * (c.dist - RACE) / Math.max(c.dist - prev, 1e-6);
+        if (c.isPlayer) { state = 'finished'; resT = 1.4; c.ai = true; c.off = 0; c.offT = 0; c.baseOff = 0; }
+      }
+    }
+    for (var a = 0; a < cars.length; a++) for (var b = a + 1; b < cars.length; b++) collide(cars[a], cars[b]);
+    order.sort(function (p, q) {
+      if (p.fin !== q.fin) return p.fin ? -1 : 1;
+      if (p.fin) return p.finT - q.finT;
+      return q.dist - p.dist;
+    });
+    if (state === 'finished') {
+      resT -= dt;
+      if (resT <= 0) { showResults(); state = 'results'; }
+    }
+  }
+
+  function fmt(t) {
+    var m = Math.floor(t / 60), s = t - m * 60;
+    return m + ':' + (s < 10 ? '0' : '') + s.toFixed(2);
+  }
+  function bestKey() { return 'race2000-best-' + diff; }
+  function readBest() { try { var v = parseFloat(localStorage.getItem(bestKey())); return isFinite(v) ? v : null; } catch (e) { return null; } }
+  function writeBest(t) { try { localStorage.setItem(bestKey(), String(t)); } catch (e) {} }
+  var DNAMES = ['轻松', '标准', '激烈'];
+  function showBest() {
+    var b = readBest();
+    document.getElementById('best').textContent = b ? ('「' + DNAMES[diff] + '」最佳成绩 ' + fmt(b)) : '';
+  }
+
+  function showResults() {
+    var rank = order.indexOf(player) + 1;
+    document.getElementById('resTitle').textContent = '第 ' + rank + ' 名';
+    var sub = rank === 1 ? '冠军！你第一个冲过了终点线。' : rank <= 3 ? '登上领奖台，成绩 ' + fmt(player.finT) + '。' : '成绩 ' + fmt(player.finT) + '，下一局把弯道刹得更准一点。';
+    var b = readBest();
+    if (player.finT && (!b || player.finT < b - 1e-6)) { writeBest(player.finT); sub += (b ? ' 刷新了这个强度的最佳成绩。' : ' 这是这个强度的第一个成绩。'); }
+    document.getElementById('resSub').textContent = sub;
+    var ul = document.getElementById('results'); ul.innerHTML = '';
+    var win = order[0];
+    order.forEach(function (c, i) {
+      var li = document.createElement('li'); if (c.isPlayer) li.className = 'me';
+      var t;
+      if (c.fin) t = i === 0 ? fmt(c.finT) : '+' + (c.finT - win.finT).toFixed(2) + ' 秒';
+      else t = '差 ' + Math.max(1, Math.round(RACE - c.dist)) + ' 米';
+      li.innerHTML = '<b>' + (i + 1) + '</b><i style="background:' + c.c1 + '"></i><span class="n">' + c.name + '</span><span class="t">' + t + '</span>';
+      ul.appendChild(li);
+    });
+    document.getElementById('menuCard').hidden = true;
+    document.getElementById('resCard').hidden = false;
+    panel.hidden = false;
+    document.getElementById('againBtn').focus();
+  }
+  function startRace() {
+    reset();
+    panel.hidden = true;
+    state = 'countdown';
+    lightsEl.hidden = false; goEl.hidden = true;
+    for (var i = 0; i < 5; i++) lightDots[i].className = '';
+  }
+  function toMenu() {
+    state = 'menu'; reset();
+    document.getElementById('resCard').hidden = true;
+    document.getElementById('menuCard').hidden = false;
+    panel.hidden = false;
+    showBest();
+  }
+  document.getElementById('startBtn').addEventListener('click', startRace);
+  document.getElementById('againBtn').addEventListener('click', startRace);
+  document.getElementById('menuBtn').addEventListener('click', toMenu);
+  var diffBtns = document.querySelectorAll('#diff button');
+  diffBtns.forEach(function (bt) {
+    bt.addEventListener('click', function () {
+      diff = parseInt(bt.getAttribute('data-d'), 10);
+      diffBtns.forEach(function (x) { x.setAttribute('aria-checked', x === bt ? 'true' : 'false'); });
+      cars.forEach(function (c) { if (!c.isPlayer) { var d = AI_DEF.filter(function (z) { return z.name === c.name; })[0]; c.skill = d.skill * DIFF_MUL[diff]; } });
+      showBest();
+    });
+  });
+  var autoEl = document.getElementById('auto');
+  autoEl.addEventListener('change', function () { autoGas = autoEl.checked; document.getElementById('bG').style.display = autoGas ? 'none' : ''; });
+  if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) { autoEl.checked = true; autoGas = true; document.getElementById('bG').style.display = 'none'; }
+
+  /* ---------- HUD ---------- */
+  var barEl = document.getElementById('bar'), dots = [];
+  function buildBar() {
+    dots.forEach(function (d) { d.remove(); }); dots = [];
+    cars.slice().reverse().forEach(function (c) {
+      var d = document.createElement('div'); d.className = 'dot' + (c.isPlayer ? ' me' : ''); d.style.background = c.c1; d.dataset.name = c.name;
+      barEl.appendChild(d); dots.push(d); c.dot = d;
+    });
+    cars.forEach(function (c) { if (c.isPlayer) barEl.appendChild(c.dot); });
+  }
+  var towerEl = document.getElementById('tower'), towerKey = '';
+  function buildTower(force) {
+    var key = order.map(function (c) { return c.name; }).join('|');
+    if (!force && key === towerKey) return;
+    towerKey = key;
+    towerEl.innerHTML = order.map(function (c, i) {
+      return '<li class="' + (c.isPlayer ? 'me' : '') + '"><b>' + (i + 1) + '</b><i style="background:' + c.c1 + '"></i>' + c.name + '</li>';
+    }).join('');
+  }
+  var timerEl = document.getElementById('timer'), distEl = document.getElementById('dist'), spdEl = document.getElementById('spd'), lapEl = document.getElementById('lap');
+  var lastSpd = -1;
+  function hud() {
+    var tm = state === 'racing' || state === 'finished' || state === 'results' ? (player.fin ? player.finT : raceT) : 0;
+    var m = Math.floor(tm / 60), s = tm - m * 60;
+    timerEl.textContent = m + ':' + (s < 10 ? '0' : '') + s.toFixed(1);
+    var dd = clamp(player.dist, 0, RACE);
+    distEl.textContent = Math.round(dd) + ' / ' + RACE + ' 米';
+    cars.forEach(function (c) { c.dot.style.left = clamp(c.dist, 0, RACE) / RACE * 100 + '%'; });
+    var sp = Math.round(player.speed * 5);
+    if (sp !== lastSpd) { lastSpd = sp; spdEl.innerHTML = sp + '<small>KM/H</small>'; }
+    lapEl.textContent = '第 ' + Math.min(2, Math.floor(clamp(player.dist, 0, RACE - 0.01) / L) + 1) + ' / 2 圈';
+    buildTower(false);
+  }
+
+  /* ---------- render ---------- */
+  var cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  var cam = { x: 0, y: 0 }, W = 0, H = 0, dpr = 1, camSc = 4;
+  function resize() {
+    var st = document.getElementById('stage');
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = st.clientWidth; H = st.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  }
+  window.addEventListener('resize', resize);
+
+  function drawCar(c) {
+    ctx.save();
+    ctx.translate(c.x, c.y); ctx.rotate(c.angle); ctx.scale(CAR_S, CAR_S);
+    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(-2.2, -1.0, 5.0, 2.5);
+    ctx.fillStyle = '#12181b';
+    ctx.fillRect(0.95, -1.35, 1.1, 0.6); ctx.fillRect(0.95, 0.75, 1.1, 0.6);
+    ctx.fillRect(-2.1, -1.5, 1.35, 0.78); ctx.fillRect(-2.1, 0.72, 1.35, 0.78);
+    ctx.fillStyle = c.c2; ctx.fillRect(-2.75, -1.05, 0.55, 2.1);
+    ctx.fillStyle = c.c1;
+    ctx.beginPath();
+    ctx.moveTo(-2.1, -0.55); ctx.lineTo(0.3, -0.68); ctx.lineTo(1.3, -0.3); ctx.lineTo(2.3, -0.2);
+    ctx.lineTo(2.3, 0.2); ctx.lineTo(1.3, 0.3); ctx.lineTo(0.3, 0.68); ctx.lineTo(-2.1, 0.55);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = c.c2; ctx.fillRect(2.05, -1.0, 0.5, 2.0); ctx.fillRect(-1.9, -0.11, 3.2, 0.22);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-0.1, 0, 0.4, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+
+  function render() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = C.grass; ctx.fillRect(0, 0, W, H);
+    // heading-up camera: the world rotates so the player's nose always points to the top of the screen
+    cam.x = player.x; cam.y = player.y;
+    camSc += (clamp(H / (60 + player.speed * 1.1), 2.2, 7) - camSc) * 0.06;
+    var sc = camSc, phi = -Math.PI / 2 - player.angle, oxs = W / 2, oys = H * 0.7;
+    var R = Math.hypot(Math.max(oxs, W - oxs), Math.max(oys, H - oys)) / sc + 6;
+    ctx.save();
+    ctx.translate(oxs, oys); ctx.rotate(phi); ctx.scale(sc, sc); ctx.translate(-cam.x, -cam.y);
+    // mowing stripes
+    ctx.fillStyle = C.grassB;
+    for (var gx = Math.floor((cam.x - R) / 36) * 36; gx < cam.x + R; gx += 36) {
+      if (((gx / 36) & 1) === 0) ctx.fillRect(gx, cam.y - R, 36, R * 2);
+    }
+    // barriers
+    ctx.lineWidth = 1.3; ctx.strokeStyle = '#d9dee0'; ctx.setLineDash([]);
+    ctx.stroke(pWallL); ctx.stroke(pWallR);
+    ctx.strokeStyle = C.red; ctx.setLineDash([3, 3]); ctx.stroke(pWallL); ctx.stroke(pWallR);
+    // kerbs
+    ctx.setLineDash([]); ctx.lineWidth = 1.8; ctx.strokeStyle = C.red;
+    ctx.stroke(pKerbL); ctx.stroke(pKerbR);
+    ctx.strokeStyle = '#f2f2f2'; ctx.setLineDash([3.2, 3.2]);
+    ctx.stroke(pKerbL); ctx.stroke(pKerbR);
+    ctx.setLineDash([]);
+    // asphalt
+    ctx.fillStyle = C.asphalt; ctx.fill(pAsphalt, 'evenodd');
+    ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 0.35; ctx.setLineDash([4, 6]); ctx.stroke(pCenter); ctx.setLineDash([]);
+    // 500 m marks (half way) and start / finish line
+    function band(sv, c1, c2, cols) {
+      var pt = pointAt(sv);
+      ctx.save(); ctx.translate(pt.x, pt.y); ctx.rotate(pt.a);
+      var rows = 12, cw = 1.4;
+      for (var r = 0; r < rows; r++) for (var cc = 0; cc < cols; cc++) {
+        ctx.fillStyle = ((r + cc) & 1) ? c1 : c2;
+        ctx.fillRect(-cw * cols / 2 + cc * cw, -HALF + r * 2, cw, 2);
+      }
+      ctx.restore();
+    }
+    band(0, '#fff', '#111', 2);
+    // grid boxes
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 0.3;
+    for (var row = 0; row < 3; row++) for (var col = 0; col < 2; col++) {
+      var sg = -(8 + row * 10) - (col ? 5 : 0) + 1.5, pp = pointAt(sg), lt = col ? 5.5 : -5.5;
+      ctx.save(); ctx.translate(pp.x + pp.nx * lt, pp.y + pp.ny * lt); ctx.rotate(pp.a);
+      ctx.strokeRect(-3.2, -2.6, 6.4, 5.2); ctx.restore();
+    }
+    // cars (draw back to front by y for slight overlap sanity: player last)
+    for (var i = cars.length - 1; i >= 0; i--) drawCar(cars[i]);
+    ctx.restore();
+    // name tags
+    ctx.font = '700 11px ' + css('--body'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (i = 0; i < cars.length; i++) {
+      var c = cars[i], ddx = c.x - cam.x, ddy = c.y - cam.y;
+      var sx = oxs + (ddx * Math.cos(phi) - ddy * Math.sin(phi)) * sc;
+      var sy = oys + (ddx * Math.sin(phi) + ddy * Math.cos(phi)) * sc - 4.6 * sc - 8;
+      if (sx < -20 || sx > W + 20 || sy < -20 || sy > H + 20) continue;
+      var tw = ctx.measureText(c.name).width + 12;
+      ctx.fillStyle = c.isPlayer ? C.amber : 'rgba(18,24,28,.72)';
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(sx - tw / 2, sy - 9, tw, 18, 9) : ctx.rect(sx - tw / 2, sy - 9, tw, 18); ctx.fill();
+      ctx.fillStyle = c.isPlayer ? C.ink : '#fff'; ctx.fillText(c.name, sx, sy + 0.5);
+    }
+    // minimap
+    var mw = 112, mh = 74, mx = W - 16 - mw, my = 58;
+    var ms = Math.min((mw - 16) / (maxX - minX), (mh - 16) / (maxY - minY));
+    var ox = mx + mw / 2 - (minX + maxX) / 2 * ms, oy = my + mh / 2 - (minY + maxY) / 2 * ms;
+    ctx.fillStyle = 'rgba(238,241,242,.93)'; ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(mx, my, mw, mh, 8) : ctx.rect(mx, my, mw, mh); ctx.fill();
+    ctx.save(); ctx.translate(ox, oy); ctx.scale(ms, ms);
+    ctx.lineWidth = 3.2 / ms; ctx.strokeStyle = '#59666d'; ctx.lineJoin = 'round'; ctx.stroke(pCenter);
+    ctx.restore();
+    for (i = cars.length - 1; i >= 0; i--) {
+      c = cars[i];
+      ctx.fillStyle = c.c1; ctx.strokeStyle = c.isPlayer ? C.ink : '#fff'; ctx.lineWidth = c.isPlayer ? 2 : 1;
+      ctx.beginPath(); ctx.arc(c.x * ms + ox, c.y * ms + oy, c.isPlayer ? 4.6 : 3.2, 0, TAU); ctx.fill(); ctx.stroke();
+    }
+  }
+
+  /* ---------- main loop ---------- */
+  var last = 0;
+  function frame(t) {
+    var dt = Math.min(0.033, (t - last) / 1000 || 0.016); last = t;
+    update(dt); render(); hud();
+    requestAnimationFrame(frame);
+  }
+  resize(); reset(); showBest();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>

@@ -123,7 +123,7 @@ body {
   border: 0; background: var(--amber); color: var(--paper-ink); width: 100%;
 }
 .btn.alt { background: #dde3e6; margin-top: 8px; }
-#startBtn, #againBtn { position: sticky; bottom: 0; box-shadow: 0 0 0 10px var(--paper); }
+#startBtn, #againBtn, #mpStart { position: sticky; bottom: 0; box-shadow: 0 0 0 10px var(--paper); }
 #nojs { background: #ffd9d4; color: #5a1710; border-radius: 6px; padding: 8px 10px; font-size: 13px; line-height: 1.5; margin: 0 0 12px; }
 :focus-visible { outline: 3px solid #2f6fdb; outline-offset: 2px; }
 #results { list-style: none; margin: 0 0 12px; padding: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -170,6 +170,11 @@ body.land #tower { top: 54px; }
 #musicName { display: block; margin-bottom: 12px; }
 #orient button { font-size: 12px; padding: 9px 2px; }
 @media (max-width: 420px) { #tower { font-size: 11px; min-width: 94px; } #lights span { width: 18px; height: 18px; } }
+.roomcode { font-family: var(--display); font-size: 44px; font-weight: 700; letter-spacing: 0.2em; margin: 0 0 10px; color: var(--paper-ink); }
+.joinrow { display: flex; gap: 8px; margin-bottom: 12px; }
+.joinrow input { flex: 1; min-width: 0; font: inherit; font-size: 20px; padding: 10px; border-radius: 8px; border: 2px solid #b8c3c9; text-align: center; letter-spacing: 0.15em; background: #fff; color: var(--paper-ink); }
+.joinrow .btn { width: auto; margin: 0; padding: 10px 18px; }
+#toast { position: absolute; left: 50%; top: 76px; transform: translateX(-50%); background: rgba(18, 24, 28, 0.92); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; max-width: 80%; text-align: center; z-index: 20; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 
@@ -189,9 +194,11 @@ body.land #tower { top: 54px; }
     <div class="chip" id="spd">0<small>KM/H</small></div>
     <div class="chip" id="lap">第 1 / 2 圈</div>
     <button class="chip" id="mute" type="button" aria-label="背景音乐开关">♪ 开</button>
+    <button class="chip" id="leave" type="button" hidden>退出</button>
   </div>
   <div id="lights" hidden><span></span><span></span><span></span><span></span><span></span></div>
   <div id="go" hidden>出发！</div>
+  <div id="toast" hidden></div>
 
   <div id="panel">
     <div class="card" id="menuCard">
@@ -222,7 +229,27 @@ body.land #tower { top: 54px; }
       <p class="small">键盘：← → 转向，↑ 油门，↓ 刹车。手机：用屏幕两侧的按钮。弯前记得松油门，冲出赛道会明显变慢。</p>
       <p class="small" id="best"></p>
       <p id="nojs">如果这行字一直在，说明当前打开方式没有运行脚本（比如预览窗口或某些内置浏览器）。请改用 Safari、Chrome 或系统浏览器打开这个文件。</p>
-      <button class="btn" id="startBtn" type="button">开始比赛</button>
+      <button class="btn" id="startBtn" type="button">开始比赛（单人）</button>
+      <button class="btn alt" id="mpBtn" type="button">联机对战（2 人）</button>
+    </div>
+    <div class="card" id="mpCard" hidden>
+      <p class="eyebrow">ONLINE · 2 PLAYERS</p>
+      <h2>联机对战</h2>
+      <p id="mpStatus"></p>
+      <div id="mpHostBox" hidden>
+        <p class="group-label">房间号（告诉好友）</p>
+        <p class="roomcode" id="roomCode">----</p>
+      </div>
+      <div id="mpChoose">
+        <button class="btn" id="mpCreate" type="button">创建房间</button>
+        <p class="group-label" style="margin-top:14px">或输入房间号加入</p>
+        <div class="joinrow">
+          <input id="joinCode" type="text" inputmode="numeric" maxlength="4" placeholder="4 位房间号" autocomplete="off" aria-label="房间号">
+          <button class="btn alt" id="mpJoin" type="button">加入</button>
+        </div>
+      </div>
+      <button class="btn" id="mpStart" type="button" hidden disabled>开始比赛</button>
+      <button class="btn alt" id="mpBack" type="button">返回</button>
     </div>
     <div class="card" id="resCard" hidden>
       <p class="eyebrow">比赛结束</p>
@@ -360,6 +387,7 @@ body.land #tower { top: 54px; }
   var diff = 1;
   var cars = [], player, order = [];
   var state = 'menu', cdT = 0, raceT = 0, resT = 0;
+  var mode = 'solo'; /* solo | host | guest */
 
   function makeCar(def, slot, isPlayer) {
     var row = Math.floor(slot / 2), col = slot % 2;
@@ -376,15 +404,31 @@ body.land #tower { top: 54px; }
     return c;
   }
   function reset() {
-    var slots = [0, 1, 2, 4, 5];
     cars = [];
-    player = makeCar({ name: '你', c1: '#ffb000', c2: '#141b1f', skill: 1 }, 3, true);
-    cars.push(player);
-    AI_DEF.forEach(function (d, i) {
-      var cc = makeCar(d, slots[i], false);
-      cc.skill = d.skill * DIFF_MUL[diff];
-      cars.push(cc);
-    });
+    if (mode === 'solo') {
+      var slots = [0, 1, 2, 4, 5];
+      player = makeCar({ name: '你', c1: '#ffb000', c2: '#141b1f', skill: 1 }, 3, true);
+      cars.push(player);
+      AI_DEF.forEach(function (d, i) {
+        var cc = makeCar(d, slots[i], false);
+        cc.skill = d.skill * DIFF_MUL[diff];
+        cars.push(cc);
+      });
+    } else {
+      /* online: cars[0] me, cars[1] the friend, cars[2..5] the four computer cars (simulated by the host) */
+      var meSlot = mode === 'host' ? 2 : 3, rvSlot = mode === 'host' ? 3 : 2, slots2 = [0, 1, 4, 5];
+      player = makeCar({ name: '你', c1: '#ffb000', c2: '#141b1f', skill: 1 }, meSlot, true);
+      cars.push(player);
+      var rv = makeCar({ name: '好友', c1: '#e0457b', c2: '#ffffff', skill: 0.95 }, rvSlot, false);
+      rv.ai = false; rv.net = true; rv.isRival = true;
+      cars.push(rv);
+      for (var i2 = 0; i2 < 4; i2++) {
+        var cc2 = makeCar(AI_DEF[i2], slots2[i2], false);
+        cc2.skill = AI_DEF[i2].skill * DIFF_MUL[diff];
+        cc2.net = (mode === 'guest');
+        cars.push(cc2);
+      }
+    }
     order = cars.slice();
     raceT = 0; cdT = 0; resT = 0;
     cam.x = player.x; cam.y = player.y;
@@ -399,7 +443,7 @@ body.land #tower { top: 54px; }
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].indexOf(k) >= 0) e.preventDefault();
     keys[k.toLowerCase()] = true;
     if (k === 'Enter' && !(e.target && e.target.tagName === 'BUTTON') && state !== 'countdown' && state !== 'racing') {
-      if (!document.getElementById('panel').hidden) startRace();
+      if (!panel.hidden && !document.getElementById('menuCard').hidden) startRace();
     }
   });
   window.addEventListener('keyup', function (e) { keys[e.key.toLowerCase()] = false; });
@@ -499,7 +543,7 @@ body.land #tower { top: 54px; }
     var px = cx[jx] + nx[jx] * c.off, py = cy[jx] + ny[jx] * c.off;
     var err = wrapA(Math.atan2(py - c.y, px - c.x) - c.angle);
     var steer = clamp(err * 2.5, -1, 1);
-    var gap = c.dist - player.dist, rb = 1;
+    var gap = c.dist - refDist(), rb = 1;
     if (!c.isPlayer) {
       if (gap > 60) rb = 1 - Math.min(0.05, (gap - 60) / 2000);
       else if (gap < -60) rb = 1 + Math.min(0.04, (-gap - 60) / 2000);
@@ -538,6 +582,7 @@ body.land #tower { top: 54px; }
     step(c, dt, c.st, (gas && !brake) ? 1 : 0, brake ? 1 : 0);
   }
   function collide(a, b) {
+    if (a.net && b.net) return;
     var ca = Math.cos(a.angle), sa = Math.sin(a.angle), cb = Math.cos(b.angle), sb = Math.sin(b.angle);
     var pa = [[a.x + ca * 1.9, a.y + sa * 1.9], [a.x - ca * 1.9, a.y - sa * 1.9]];
     var pb = [[b.x + cb * 1.9, b.y + sb * 1.9], [b.x - cb * 1.9, b.y - sb * 1.9]];
@@ -546,15 +591,22 @@ body.land #tower { top: 54px; }
       var dx = pb[j][0] - pa[i][0], dy = pb[j][1] - pa[i][1], dd = Math.hypot(dx, dy);
       if (dd < 3.2 && dd > 1e-4) {
         var push = (3.2 - dd) / 2, ux = dx / dd, uy = dy / dd;
-        a.x -= ux * push; a.y -= uy * push; b.x += ux * push; b.y += uy * push;
+        /* a car driven over the network is never pushed locally; the local car takes the whole push */
+        var wa = a.net ? 0 : (b.net ? 2 : 1), wb = b.net ? 0 : (a.net ? 2 : 1);
+        a.x -= ux * push * wa; a.y -= uy * push * wa; b.x += ux * push * wb; b.y += uy * push * wb;
         hit = true;
       }
     }
     if (hit) {
-      var avg = (a.speed + b.speed) / 2;
-      a.speed += (avg - a.speed) * 0.04; b.speed += (avg - b.speed) * 0.04;
-      var back = sdist(a.s, b.s) > 0 ? a : b;
-      back.speed *= 0.994;
+      if (a.net || b.net) {
+        var mine = a.net ? b : a;
+        mine.speed *= 0.992;
+      } else {
+        var avg = (a.speed + b.speed) / 2;
+        a.speed += (avg - a.speed) * 0.04; b.speed += (avg - b.speed) * 0.04;
+        var back = sdist(a.s, b.s) > 0 ? a : b;
+        back.speed *= 0.994;
+      }
     }
   }
 
@@ -572,11 +624,12 @@ body.land #tower { top: 54px; }
       }
       return;
     }
-    if (state !== 'racing' && state !== 'finished') return;
+    if (state !== 'racing' && state !== 'finished' && state !== 'results') return;
     if (goT > 0) { goT -= dt; if (goT <= 0) goEl.hidden = true; }
     raceT += dt;
     for (var k = 0; k < cars.length; k++) {
       var c = cars[k], prev = c.dist;
+      if (c.net) { netStep(c, dt); continue; }
       if (c.ai || c.fin && c.isPlayer) {
         if (c.isPlayer) { c.skill = 0.78; }
         aiControl(c, dt);
@@ -589,6 +642,7 @@ body.land #tower { top: 54px; }
       }
     }
     for (var a = 0; a < cars.length; a++) for (var b = a + 1; b < cars.length; b++) collide(cars[a], cars[b]);
+    netTick(dt);
     order.sort(function (p, q) {
       if (p.fin !== q.fin) return p.fin ? -1 : 1;
       if (p.fin) return p.finT - q.finT;
@@ -618,7 +672,7 @@ body.land #tower { top: 54px; }
     document.getElementById('resTitle').textContent = '第 ' + rank + ' 名';
     var sub = rank === 1 ? '冠军！你第一个冲过了终点线。' : rank <= 3 ? '登上领奖台，成绩 ' + fmt(player.finT) + '。' : '成绩 ' + fmt(player.finT) + '，下一局把弯道刹得更准一点。';
     var b = readBest();
-    if (player.finT && (!b || player.finT < b - 1e-6)) { writeBest(player.finT); sub += (b ? ' 刷新了这个强度的最佳成绩。' : ' 这是这个强度的第一个成绩。'); }
+    if (mode === 'solo' && player.finT && (!b || player.finT < b - 1e-6)) { writeBest(player.finT); sub += (b ? ' 刷新了这个强度的最佳成绩。' : ' 这是这个强度的第一个成绩。'); }
     document.getElementById('resSub').textContent = sub;
     var ul = document.getElementById('results'); ul.innerHTML = '';
     var win = order[0];
@@ -631,35 +685,48 @@ body.land #tower { top: 54px; }
       ul.appendChild(li);
     });
     document.getElementById('menuCard').hidden = true;
+    document.getElementById('mpCard').hidden = true;
     document.getElementById('resCard').hidden = false;
     panel.hidden = false;
-    document.getElementById('againBtn').focus();
+    var again = document.getElementById('againBtn');
+    if (mode === 'guest') { again.disabled = true; again.textContent = '等房主开始下一局…'; }
+    else { again.disabled = false; again.textContent = '再来一局'; }
+    document.getElementById('menuBtn').textContent = mode === 'solo' ? '换强度或设置' : '退出联机';
+    again.focus();
   }
-  function startRace() {
+  function startRace() { mode = 'solo'; beginRace(0); }
+  function beginRace(cdStart) {
     startAudio();
     if (!forceMode) tryLandscape();
     reset();
+    cdT = cdStart || 0;
+    document.getElementById('leave').hidden = (mode === 'solo');
     panel.hidden = true;
     state = 'countdown';
     lightsEl.hidden = false; goEl.hidden = true;
     for (var i = 0; i < 5; i++) lightDots[i].className = '';
   }
   function toMenu() {
-    state = 'menu'; reset();
+    state = 'menu'; mode = 'solo'; reset();
+    document.getElementById('leave').hidden = true;
     document.getElementById('resCard').hidden = true;
+    document.getElementById('mpCard').hidden = true;
     document.getElementById('menuCard').hidden = false;
     panel.hidden = false;
     showBest();
   }
   document.getElementById('startBtn').addEventListener('click', startRace);
-  document.getElementById('againBtn').addEventListener('click', startRace);
-  document.getElementById('menuBtn').addEventListener('click', toMenu);
+  document.getElementById('againBtn').addEventListener('click', function () {
+    if (mode === 'host') hostStart(); else if (mode === 'solo') startRace();
+  });
+  document.getElementById('menuBtn').addEventListener('click', function () { if (mode !== 'solo') leaveMP(); toMenu(); });
+  document.getElementById('leave').addEventListener('click', function () { leaveMP(); toMenu(); });
   var diffBtns = document.querySelectorAll('#diff button');
   diffBtns.forEach(function (bt) {
     bt.addEventListener('click', function () {
       diff = parseInt(bt.getAttribute('data-d'), 10);
       diffBtns.forEach(function (x) { x.setAttribute('aria-checked', x === bt ? 'true' : 'false'); });
-      cars.forEach(function (c) { if (!c.isPlayer) { var d = AI_DEF.filter(function (z) { return z.name === c.name; })[0]; c.skill = d.skill * DIFF_MUL[diff]; } });
+      cars.forEach(function (c) { if (!c.isPlayer) { var d = AI_DEF.filter(function (z) { return z.name === c.name; })[0]; if (d) c.skill = d.skill * DIFF_MUL[diff]; } });
       showBest();
     });
   });
@@ -805,6 +872,299 @@ body.land #tower { top: 54px; }
       }
     } catch (e) {}
   }
+
+  /* ---------- online play: two humans plus four computer cars, relayed through a public MQTT broker ---------- */
+  var BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081'];
+  (function () {
+    var q = '', local = (location.protocol === 'file:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+    try { q = new URLSearchParams(location.search).get('broker') || ''; } catch (e) {}
+    if (q && local) BROKERS = [q];
+  })();
+
+  /* a small MQTT 3.1.1 client over WebSocket: connect, subscribe, publish (QoS 0, optional retain), will message */
+  function MQ(url, o) {
+    var self = this, ws, buf = new Uint8Array(0), pid = 1, ping = null, enc = new TextEncoder(), dec = new TextDecoder();
+    self.connected = false; self.onconnect = null; self.onmessage = null; self.onclose = null; self.onerror = null;
+    function str(s) { var b = enc.encode(s), r = new Uint8Array(2 + b.length); r[0] = b.length >> 8; r[1] = b.length & 255; r.set(b, 2); return r; }
+    function varlen(n) { var out = []; do { var d = n % 128; n = Math.floor(n / 128); if (n > 0) d |= 128; out.push(d); } while (n > 0); return out; }
+    function cat(parts) { var n = 0, i; for (i = 0; i < parts.length; i++) n += parts[i].length; var r = new Uint8Array(n), p = 0; for (i = 0; i < parts.length; i++) { r.set(parts[i], p); p += parts[i].length; } return r; }
+    function packet(first, body) { return cat([new Uint8Array([first].concat(varlen(body.length))), body]); }
+    function send(u8) { if (ws && ws.readyState === 1) ws.send(u8); }
+    function connectPacket() {
+      var flags = 0x02;
+      if (o.will) flags |= 0x04 | (o.will.retain ? 0x20 : 0);
+      var parts = [cat([str('MQTT'), new Uint8Array([4, flags, (o.keepalive >> 8) & 255, o.keepalive & 255])]), str(o.clientId)];
+      if (o.will) { var wp = enc.encode(o.will.payload || ''); parts.push(str(o.will.topic), cat([new Uint8Array([wp.length >> 8, wp.length & 255]), wp])); }
+      return packet(0x10, cat(parts));
+    }
+    function handle(type, flags, body) {
+      if (type === 2) {
+        if (body.length >= 2 && body[1] === 0) {
+          self.connected = true;
+          ping = setInterval(function () { send(new Uint8Array([0xC0, 0])); }, o.keepalive * 500);
+          if (self.onconnect) self.onconnect();
+        } else if (self.onerror) self.onerror();
+      } else if (type === 3) {
+        var qos = (flags >> 1) & 3, tl = (body[0] << 8) | body[1], topic = dec.decode(body.subarray(2, 2 + tl)), p = 2 + tl;
+        if (qos > 0) { var id = [body[p], body[p + 1]]; p += 2; if (qos === 1) send(new Uint8Array([0x40, 2, id[0], id[1]])); }
+        if (self.onmessage) self.onmessage(topic, dec.decode(body.subarray(p)), flags & 1);
+      }
+    }
+    function onData(chunk) {
+      buf = cat([buf, new Uint8Array(chunk)]);
+      while (buf.length >= 2) {
+        var mult = 1, len = 0, i = 1, b;
+        do { if (i >= buf.length) return; b = buf[i++]; len += (b & 127) * mult; mult *= 128; } while ((b & 128) && i < 5);
+        if (buf.length < i + len) return;
+        var type = buf[0] >> 4, flags = buf[0] & 15, body = buf.slice(i, i + len);
+        buf = buf.slice(i + len);
+        handle(type, flags, body);
+      }
+    }
+    self.publish = function (topic, payload, retain) { send(packet(0x30 | (retain ? 1 : 0), cat([str(topic), enc.encode(payload || '')]))); };
+    self.subscribe = function (topics) {
+      var parts = [new Uint8Array([pid >> 8, pid & 255])];
+      pid = (pid % 65534) + 1;
+      topics.forEach(function (t) { parts.push(str(t), new Uint8Array([0])); });
+      send(packet(0x82, cat(parts)));
+    };
+    self.end = function () {
+      if (ping) { clearInterval(ping); ping = null; }
+      send(new Uint8Array([0xE0, 0]));
+      self.connected = false;
+      var w = ws; ws = null;
+      setTimeout(function () { try { if (w) w.close(1000, 'bye'); } catch (e) {} }, 200);
+    };
+    ws = new WebSocket(url, 'mqtt');
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = function () { send(connectPacket()); };
+    ws.onmessage = function (e) { onData(e.data); };
+    ws.onerror = function () { if (self.onerror) self.onerror(); };
+    ws.onclose = function () { if (ping) { clearInterval(ping); ping = null; } var was = self.connected; self.connected = false; if (self.onclose) self.onclose(was); };
+  }
+
+  var NET = { client: null, code: '', role: '', id: Math.random().toString(36).slice(2, 10), peerId: null, joined: false, sentJoin: false, claimed: false, collide: false, lastRx: 0, oneWay: 0.08, rtt: 0, sendT: 0, hb: null, gt: null, hbN: 0 };
+  var MP_INTRO = '两台手机或电脑打开同一个网页：一人创建房间，另一人输入房间号加入。赛道上仍有 4 辆电脑赛车。联机需要网络能访问公共联机服务器。';
+  var mpSayEl = document.getElementById('mpStatus');
+  var toastEl = document.getElementById('toast'), toastTimer = 0;
+  function mpSay(t) { mpSayEl.textContent = t; }
+  function toast(t, ms) { toastEl.textContent = t; toastEl.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(function () { toastEl.hidden = true; }, ms || 3200); }
+  function showCard(id) { ['menuCard', 'resCard', 'mpCard'].forEach(function (x) { document.getElementById(x).hidden = (x !== id); }); panel.hidden = false; }
+  function topic(s) { return 'race2000/v1/' + NET.code + '/' + s; }
+  function pub(s, obj, retain) {
+    var c = NET.client;
+    if (!c || !c.connected) return;
+    try { c.publish(topic(s), obj === null ? '' : JSON.stringify(obj), !!retain); } catch (e) {}
+  }
+  function publishH() { pub('h', { id: NET.id, n: ++NET.hbN, st: NET.joined ? 'full' : 'lobby' }, true); }
+  function setMpUi(stage) {
+    document.getElementById('mpChoose').hidden = (stage !== 'choose');
+    document.getElementById('mpHostBox').hidden = !(stage === 'host-wait' || stage === 'host-ready');
+    var st = document.getElementById('mpStart');
+    st.hidden = !(stage === 'host-wait' || stage === 'host-ready');
+    st.disabled = (stage !== 'host-ready');
+  }
+  function resetMpUi() { setMpUi('choose'); mpSay(MP_INTRO); }
+  function unlockAudio() {
+    if (au.enabled && !au.extUse && audioInit() && au.ctx.state === 'suspended') au.ctx.resume();
+  }
+
+  function netConnect(will, onReady, onFail) {
+    var i = 0;
+    (function next() {
+      if (i >= BROKERS.length) { onFail(); return; }
+      var url = BROKERS[i++], done = false, c;
+      try { c = new MQ(url, { clientId: 'r2k' + NET.id + i, keepalive: 30, will: will }); } catch (e) { next(); return; }
+      var to = setTimeout(function () { if (!done) { done = true; c.end(); next(); } }, 7000);
+      c.onconnect = function () { if (done) return; done = true; clearTimeout(to); NET.client = c; onReady(c); };
+      c.onerror = function () { if (done) return; done = true; clearTimeout(to); c.end(); next(); };
+      c.onclose = function () {
+        if (!done) { done = true; clearTimeout(to); next(); }
+        else if (NET.client === c) { NET.client = null; peerLost(true); }
+      };
+      c.onmessage = onMsg;
+    })();
+  }
+  function leaveNet() {
+    if (NET.hb) { clearInterval(NET.hb); NET.hb = null; }
+    if (NET.gt) { clearTimeout(NET.gt); NET.gt = null; }
+    var c = NET.client; NET.client = null;
+    if (c) {
+      try { if (NET.role === 'host' && NET.claimed) c.publish(topic('h'), '', true); } catch (e) {}
+      c.end();
+    }
+    NET.role = ''; NET.joined = false; NET.peerId = null; NET.claimed = false; NET.collide = false; NET.sentJoin = false; NET.rtt = 0; NET.lastRx = 0;
+  }
+  function leaveMP() {
+    if (NET.client && NET.joined) pub(NET.role === 'host' ? 'dn' : 'up', { t: 'bye', id: NET.id });
+    leaveNet(); mode = 'solo';
+    document.getElementById('leave').hidden = true;
+  }
+
+  function genCode() { return String(1000 + Math.floor(Math.random() * 9000)); }
+  function mpCreate(tries) {
+    leaveNet(); tries = tries || 0;
+    unlockAudio();
+    NET.role = 'host'; NET.code = genCode(); NET.collide = false; NET.claimed = false;
+    mpSay('正在连接联机服务器…'); setMpUi('busy');
+    netConnect({ topic: topic('h'), payload: '', retain: true }, function (c) {
+      c.subscribe([topic('h'), topic('up')]);
+      setTimeout(function () {
+        if (NET.role !== 'host' || NET.client !== c) return;
+        if (NET.collide) {
+          if (tries < 6) mpCreate(tries + 1);
+          else { mpSay('暂时没有可用的房间号，请稍后再试。'); leaveNet(); resetMpUi(); }
+          return;
+        }
+        NET.claimed = true; publishH();
+        NET.hb = setInterval(publishH, 5000);
+        document.getElementById('roomCode').textContent = NET.code;
+        setMpUi('host-wait'); mpSay('把房间号告诉好友，等对方加入…');
+      }, 900);
+    }, function () { mpSay('连接联机服务器失败。请检查网络后重试（有些网络会屏蔽联机服务器）。'); leaveNet(); resetMpUi(); });
+  }
+  function mpJoin() {
+    var code = (document.getElementById('joinCode').value || '').replace(/\D/g, '');
+    if (code.length !== 4) { mpSay('请输入 4 位数字的房间号。'); return; }
+    leaveNet(); unlockAudio();
+    NET.role = 'guest'; NET.code = code;
+    mpSay('正在连接联机服务器…'); setMpUi('busy');
+    netConnect(null, function (c) {
+      c.subscribe([topic('h'), topic('dn')]);
+      mpSay('正在查找房间 ' + code + '…');
+      NET.gt = setTimeout(function () {
+        if (NET.role === 'guest' && !NET.joined) { mpSay('找不到房间 ' + code + '，或房主已经离开。请核对房间号。'); leaveNet(); resetMpUi(); }
+      }, 6000);
+    }, function () { mpSay('连接联机服务器失败。请检查网络后重试（有些网络会屏蔽联机服务器）。'); leaveNet(); resetMpUi(); });
+  }
+  function hostStart() {
+    if (!NET.joined) { toast('还没有好友在房间里'); return; }
+    mode = 'host'; NET.lastRx = performance.now();
+    pub('dn', { t: 'start', d: diff });
+    beginRace(0);
+  }
+
+  function onMsg(tp, txt) {
+    var suffix = tp.slice(tp.lastIndexOf('/') + 1), m = null;
+    if (txt) { try { m = JSON.parse(txt); } catch (e) { return; } }
+    if (suffix === 'h') {
+      if (NET.role === 'host' && !NET.claimed && m && m.id && m.id !== NET.id) NET.collide = true;
+      else if (NET.role === 'guest' && !NET.joined && !NET.sentJoin && m && m.id) { NET.sentJoin = true; pub('up', { t: 'join', id: NET.id }); }
+      return;
+    }
+    if (!m) return;
+    if (NET.role === 'host' && suffix === 'up') hostRx(m);
+    else if (NET.role === 'guest' && suffix === 'dn') guestRx(m);
+  }
+  function hostRx(m) {
+    if (m.t === 'join') {
+      if (!NET.joined) {
+        NET.joined = true; NET.peerId = m.id; NET.lastRx = performance.now();
+        pub('dn', { t: 'welcome', to: m.id }); publishH();
+        setMpUi('host-ready'); mpSay('好友已加入！点「开始比赛」就能出发。');
+      } else if (NET.peerId === m.id) pub('dn', { t: 'welcome', to: m.id });
+      else pub('dn', { t: 'full', to: m.id });
+      return;
+    }
+    if (!NET.joined || m.id !== NET.peerId) return;
+    NET.lastRx = performance.now();
+    if (m.t === 's') gotState(m, true);
+    else if (m.t === 'p') pub('dn', { t: 'q', ts: m.ts, to: m.id });
+    else if (m.t === 'bye') peerLost(false);
+  }
+  function guestRx(m) {
+    if (m.to && m.to !== NET.id) return;
+    if (m.t === 'full') { mpSay('这个房间已经有两位玩家了。'); leaveNet(); resetMpUi(); return; }
+    if (m.t === 'welcome') {
+      if (NET.joined) return;
+      NET.joined = true; clearTimeout(NET.gt); NET.lastRx = performance.now();
+      setMpUi('busy'); mpSay('已加入房间 ' + NET.code + '。等房主开始比赛…');
+      var sendPing = function () { pub('up', { t: 'p', id: NET.id, ts: Date.now() }); };
+      sendPing(); NET.hb = setInterval(sendPing, 1500);
+      return;
+    }
+    if (!NET.joined) return;
+    NET.lastRx = performance.now();
+    if (m.t === 'start') { diff = m.d | 0; mode = 'guest'; beginRace(NET.oneWay); }
+    else if (m.t === 's') gotState(m, false);
+    else if (m.t === 'q') {
+      var rtt = (Date.now() - m.ts) / 1000;
+      if (rtt > 0 && rtt < 3) { NET.rtt = NET.rtt ? NET.rtt * 0.7 + rtt * 0.3 : rtt; NET.oneWay = clamp(NET.rtt / 2, 0.02, 0.4); }
+    } else if (m.t === 'bye') peerLost(false);
+  }
+
+  function pack(c) {
+    return [Math.round(c.x * 100) / 100, Math.round(c.y * 100) / 100, Math.round(c.angle * 1000) / 1000, Math.round(c.speed * 10) / 10, Math.round(c.dist * 10) / 10, c.fin ? 1 : 0, Math.round(c.finT * 100) / 100];
+  }
+  function setSnap(c, p) {
+    if (!c || !p) return;
+    if (!c.snap) { c.x = p[0]; c.y = p[1]; c.angle = p[2]; c.speed = p[3]; c.dist = p[4]; }
+    c.snap = { x: p[0], y: p[1], a: p[2], v: p[3], d: p[4], f: p[5], ft: p[6], t: performance.now() };
+  }
+  function gotState(m, fromGuest) {
+    if (mode === 'solo' || cars.length < 6 || !cars[1].isRival) return;
+    setSnap(cars[1], m.m);
+    if (fromGuest) { if (m.rtt) NET.oneWay = clamp(m.rtt / 2000, 0.02, 0.4); }
+    else if (m.a) for (var i = 0; i < 4; i++) setSnap(cars[2 + i], m.a[i]);
+  }
+  function locateFull(c) {
+    var best = 1e12, bi = 0;
+    for (var i = 0; i < M; i++) { var dx = c.x - cx[i], dy = c.y - cy[i], q = dx * dx + dy * dy; if (q < best) { best = q; bi = i; } }
+    c.idx = bi;
+    var ex = c.x - cx[bi], ey = c.y - cy[bi];
+    c.lat = ex * nx[bi] + ey * ny[bi];
+    c.s = (((bi * DS + ex * tx[bi] + ey * ty[bi]) % L) + L) % L;
+  }
+  function netStep(c, dt) {
+    var s = c.snap;
+    if (!s) return;
+    var lead = Math.min(0.3, (performance.now() - s.t) / 1000) + NET.oneWay;
+    var qx = s.x + Math.cos(s.a) * s.v * lead, qy = s.y + Math.sin(s.a) * s.v * lead, k = Math.min(1, dt * 14);
+    c.x += (qx - c.x) * k; c.y += (qy - c.y) * k;
+    c.angle += wrapA(s.a - c.angle) * k;
+    c.speed += (s.v - c.speed) * k;
+    c.dist = s.d + s.v * lead; c.fin = !!s.f; c.finT = s.ft;
+    locateFull(c);
+  }
+  function refDist() {
+    var r = cars[1];
+    if (mode !== 'solo' && r && r.isRival && r.net) return (player.dist + r.dist) / 2;
+    return player.dist;
+  }
+  function netTick(dt) {
+    if (mode === 'solo' || !NET.joined || !NET.client) return;
+    NET.sendT += dt;
+    if (NET.sendT >= 0.066) {
+      NET.sendT = 0;
+      if (mode === 'host') pub('dn', { t: 's', m: pack(cars[0]), a: [pack(cars[2]), pack(cars[3]), pack(cars[4]), pack(cars[5])] });
+      else pub('up', { t: 's', id: NET.id, m: pack(cars[0]), rtt: Math.round(NET.rtt * 1000) });
+    }
+    if (NET.lastRx && performance.now() - NET.lastRx > 6000) peerLost(false);
+  }
+  function peerLost(connLost) {
+    var inLobby = state === 'menu' && !panel.hidden && !document.getElementById('mpCard').hidden;
+    if (inLobby) { mpSay(connLost ? '和联机服务器的连接断开了，请重试。' : '好友离开了房间。'); leaveNet(); resetMpUi(); return; }
+    if (mode === 'host') {
+      var r = cars[1];
+      if (r && r.isRival && r.net) { r.net = false; r.ai = true; r.skill = 0.93; r.off = 0; r.offT = 0; r.baseOff = 0; }
+      NET.joined = false;
+      toast(connLost ? '联机连接断开，好友的赛车改由电脑控制' : '好友已离开，他的赛车改由电脑控制');
+    } else if (mode === 'guest') {
+      toast(connLost ? '联机连接断开，比赛结束' : '房主已离开，比赛结束');
+      NET.joined = false;
+      setTimeout(function () { if (mode === 'guest') { leaveMP(); toMenu(); } }, 1800);
+    }
+  }
+
+  document.getElementById('mpBtn').addEventListener('click', function () {
+    showCard('mpCard'); resetMpUi();
+    if (!window.WebSocket) { setMpUi('busy'); mpSay('这个浏览器不支持联机。'); }
+  });
+  document.getElementById('mpCreate').addEventListener('click', function () { mpCreate(0); });
+  document.getElementById('mpJoin').addEventListener('click', mpJoin);
+  document.getElementById('joinCode').addEventListener('keydown', function (e) { if (e.key === 'Enter') mpJoin(); });
+  document.getElementById('mpStart').addEventListener('click', hostStart);
+  document.getElementById('mpBack').addEventListener('click', function () { leaveMP(); showCard('menuCard'); });
 
   /* ---------- HUD ---------- */
   var barEl = document.getElementById('bar'), dots = [];

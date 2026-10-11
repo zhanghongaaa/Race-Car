@@ -98,7 +98,7 @@ body {
 }
 
 #panel {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 10;
   padding: 16px; background: rgba(18, 24, 28, 0.55); overflow: auto;
 }
 .card {
@@ -147,22 +147,28 @@ body {
 #pad button svg { width: 28px; height: 28px; }
 @media (pointer: coarse), (max-width: 700px) { #pad { display: flex; } }
 #rot { display: none; background: #ffe7ad; color: var(--paper-ink); border-radius: 6px; padding: 8px 10px; font-size: 13px; line-height: 1.5; margin: 0 0 12px; }
-@media (orientation: portrait) and (pointer: coarse) { #rot { display: block; } }
+@media (orientation: portrait) and (pointer: coarse) { body:not(.force) #rot { display: block; } }
 #tiltMsg { font-size: 12px; color: #5b6a72; margin: -6px 0 12px; line-height: 1.5; }
 #tiltMsg:empty { display: none; }
-@media (orientation: landscape) and (max-height: 560px) {
-  #pad {
-    position: fixed; left: 0; right: 0; bottom: 0; background: transparent; pointer-events: none;
-    padding: 0 calc(16px + env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
-  }
-  #pad button { pointer-events: auto; width: 96px; height: 84px; background: rgba(29, 38, 44, 0.58); }
-  #pad button.on { background: var(--amber); }
-  #dash { left: 50%; transform: translateX(-50%); }
-  .card { padding: 14px 16px; max-width: 520px; }
-  .card h1, .card h2 { font-size: 24px; }
-  .card p { margin-bottom: 10px; }
-  #tower { top: 54px; }
+#app { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+body.force #app { position: fixed; left: 0; top: 0; flex: none; box-sizing: border-box; transform-origin: 0 0; background: var(--ink); }
+body.land #pad {
+  position: absolute; left: 0; right: 0; bottom: 0; background: transparent; pointer-events: none;
+  padding: 0 calc(16px + env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
 }
+body.force #pad { padding: 0 16px 12px; }
+body.land #pad button { pointer-events: auto; width: 96px; height: 84px; background: rgba(29, 38, 44, 0.58); }
+body.land #pad button.on { background: var(--amber); }
+body.land #dash { left: 50%; transform: translateX(-50%); }
+body.land .card { padding: 14px 16px; max-width: 520px; }
+body.land .card h1, body.land .card h2 { font-size: 24px; }
+body.land .card p { margin-bottom: 10px; }
+body.land #tower { top: 54px; }
+#mute { border: 0; font-size: 13px; min-height: 36px; cursor: pointer; }
+.vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.filebtn { display: inline-block; font-size: 14px; font-weight: 700; padding: 8px 12px; border-radius: 6px; background: #dde3e6; cursor: pointer; margin-bottom: 6px; }
+#musicName { display: block; margin-bottom: 12px; }
+#orient button { font-size: 12px; padding: 9px 2px; }
 @media (max-width: 420px) { #tower { font-size: 11px; min-width: 94px; } #lights span { width: 18px; height: 18px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
@@ -170,6 +176,7 @@ body {
 <style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);}body{margin:0}</style>
 </head>
 <body>
+<div id="app">
 <div id="stage">
   <canvas id="cv"></canvas>
   <div id="strip" class="board">
@@ -181,6 +188,7 @@ body {
   <div id="dash">
     <div class="chip" id="spd">0<small>KM/H</small></div>
     <div class="chip" id="lap">第 1 / 2 圈</div>
+    <button class="chip" id="mute" type="button" aria-label="背景音乐开关">♪ 开</button>
   </div>
   <div id="lights" hidden><span></span><span></span><span></span><span></span><span></span></div>
   <div id="go" hidden>出发！</div>
@@ -189,7 +197,7 @@ body {
     <div class="card" id="menuCard">
       <p class="eyebrow">GRAND PRIX · 2000 M</p>
       <h1>六车争霸赛</h1>
-      <p id="rot">手机请横过来玩，视野更宽。如果画面没跟着转，先打开系统的自动旋转。</p>
+      <p id="rot">手机请横过来玩，视野更宽。如果它总是自己竖回去，请在下面的「屏幕方向」里选强制横屏。</p>
       <p>你开 1 辆车，电脑开另外 5 辆。赛道一圈 1000 米，跑 2 圈共 2000 米，先冲过终点线的获胜。视角跟着车头走，车头永远朝上。</p>
       <p class="group-label" id="dlabel">电脑强度</p>
       <div class="seg" role="radiogroup" aria-labelledby="dlabel" id="diff">
@@ -200,6 +208,17 @@ body {
       <label class="check" for="auto"><input type="checkbox" id="auto"> 自动油门（只需要转向和刹车）</label>
       <label class="check" for="tilt"><input type="checkbox" id="tilt"> 重力感应转向（像方向盘一样转动手机）</label>
       <p id="tiltMsg"></p>
+      <p class="group-label" id="olabel">屏幕方向</p>
+      <div class="seg" role="radiogroup" aria-labelledby="olabel" id="orient">
+        <button type="button" role="radio" aria-checked="true" data-o="0">自动</button>
+        <button type="button" role="radio" aria-checked="false" data-o="1">强制横屏 顶部朝左</button>
+        <button type="button" role="radio" aria-checked="false" data-o="2">强制横屏 顶部朝右</button>
+      </div>
+      <p class="small">手机总是自己竖起来？先在控制中心打开「纵向锁定」，再选强制横屏，然后按所选方向把手机横过来（顶部朝左就是逆时针横放）。这样转动手机时画面不会再突然翻转。</p>
+      <label class="check" for="music"><input type="checkbox" id="music" checked> 背景音乐</label>
+      <label class="filebtn" for="musicFile">选择我自己的音乐文件</label>
+      <input type="file" id="musicFile" class="vh" accept="audio/*">
+      <span class="small" id="musicName">不选的话，会播放游戏自带的原创赛车音乐。选了就循环播放你的文件。</span>
       <p class="small">键盘：← → 转向，↑ 油门，↓ 刹车。手机：用屏幕两侧的按钮。弯前记得松油门，冲出赛道会明显变慢。</p>
       <p class="small" id="best"></p>
       <p id="nojs">如果这行字一直在，说明当前打开方式没有运行脚本（比如预览窗口或某些内置浏览器）。请改用 Safari、Chrome 或系统浏览器打开这个文件。</p>
@@ -225,6 +244,7 @@ body {
     <button type="button" id="bB">刹车</button>
     <button type="button" id="bG">油门</button>
   </div>
+</div>
 </div>
 
 <script>
@@ -616,6 +636,8 @@ body {
     document.getElementById('againBtn').focus();
   }
   function startRace() {
+    startAudio();
+    if (!forceMode) tryLandscape();
     reset();
     panel.hidden = true;
     state = 'countdown';
@@ -644,6 +666,145 @@ body {
   var autoEl = document.getElementById('auto');
   autoEl.addEventListener('change', function () { autoGas = autoEl.checked; document.getElementById('bG').style.display = autoGas ? 'none' : ''; });
   if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) { autoEl.checked = true; autoGas = true; document.getElementById('bG').style.display = 'none'; }
+
+  /* ---------- music: original synth loop, or the player's own file ---------- */
+  var au = { ctx: null, synth: null, timer: null, step: 0, next: 0, enabled: true, ext: null, extUrl: null, extUse: false, noise: null };
+  var CH = [
+    { bass: 45, arp: [57, 60, 64, 69], pad: [57, 60, 64] },
+    { bass: 41, arp: [53, 57, 60, 65], pad: [53, 57, 60] },
+    { bass: 48, arp: [60, 64, 67, 72], pad: [55, 60, 64] },
+    { bass: 40, arp: [56, 59, 64, 68], pad: [52, 56, 59] }
+  ];
+  var ARP = [0, 1, 2, 3, 2, 1, 2, 3];
+  var EIGHTH = 60 / 112 / 2;
+  function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+  function audioInit() {
+    if (au.ctx) return true;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    try {
+      au.ctx = new AC();
+      var bus = au.ctx.createGain(); bus.gain.value = 0.55; bus.connect(au.ctx.destination);
+      au.synth = au.ctx.createGain(); au.synth.gain.value = 1; au.synth.connect(bus);
+      var len = Math.floor(au.ctx.sampleRate * 0.1), buf = au.ctx.createBuffer(1, len, au.ctx.sampleRate), d = buf.getChannelData(0);
+      for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      au.noise = buf;
+    } catch (e) { au.ctx = null; return false; }
+    return true;
+  }
+  function tone(t, f, dur, type, vol, atk, cutoff) {
+    var c = au.ctx, o = c.createOscillator(), g = c.createGain(), out = g;
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + atk);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    if (cutoff) { var lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cutoff; g.connect(lp); out = lp; }
+    out.connect(au.synth);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  function kick(t) {
+    var c = au.ctx, o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.14);
+    g.gain.setValueAtTime(0.45, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o.connect(g); g.connect(au.synth); o.start(t); o.stop(t + 0.22);
+  }
+  function hat(t) {
+    var c = au.ctx, s = c.createBufferSource(), hp = c.createBiquadFilter(), g = c.createGain();
+    s.buffer = au.noise; hp.type = 'highpass'; hp.frequency.value = 7000;
+    g.gain.setValueAtTime(0.05, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    s.connect(hp); hp.connect(g); g.connect(au.synth); s.start(t); s.stop(t + 0.08);
+  }
+  function sched() {
+    var c = au.ctx;
+    if (!c) return;
+    while (au.next < c.currentTime + 0.3) {
+      var s = au.step, ch = CH[Math.floor(s / 8) % 4], pos = s % 8, t = au.next;
+      if (pos === 0) {
+        ch.pad.forEach(function (m) { tone(t, mtof(m), EIGHTH * 8, 'sawtooth', 0.025, 0.4, 900); });
+        tone(t, mtof(ch.bass), EIGHTH * 3.6, 'triangle', 0.22, 0.01);
+      }
+      if (pos === 4) tone(t, mtof(ch.bass), EIGHTH * 2.6, 'triangle', 0.18, 0.01);
+      tone(t, mtof(ch.arp[ARP[pos]]), EIGHTH * 1.7, 'triangle', 0.10, 0.008);
+      if (pos % 2 === 0) kick(t); else hat(t);
+      au.next += EIGHTH; au.step++;
+    }
+  }
+  function startSynth() { if (au.timer || !au.ctx) return; au.next = au.ctx.currentTime + 0.1; au.step = 0; sched(); au.timer = setInterval(sched, 80); }
+  function stopSynth() { if (au.timer) { clearInterval(au.timer); au.timer = null; } }
+  function applyMusic() {
+    var on = au.enabled;
+    if (au.ctx) {
+      if (au.ctx.state === 'suspended' && on) au.ctx.resume();
+      if (on && !au.extUse) startSynth(); else stopSynth();
+    }
+    if (au.ext) { if (on && au.extUse) { var pr = au.ext.play(); if (pr && pr.catch) pr.catch(function () {}); } else au.ext.pause(); }
+    document.getElementById('mute').textContent = on ? '♪ 开' : '♪ 关';
+    document.getElementById('music').checked = on;
+  }
+  function startAudio() {
+    if (!au.enabled) return;
+    if (!au.extUse) audioInit();
+    applyMusic();
+  }
+  document.getElementById('mute').addEventListener('click', function () { au.enabled = !au.enabled; if (au.enabled && !au.extUse) audioInit(); applyMusic(); });
+  document.getElementById('music').addEventListener('change', function (e) { au.enabled = e.target.checked; if (au.enabled && !au.extUse) audioInit(); applyMusic(); });
+  var musicNameEl = document.getElementById('musicName');
+  document.getElementById('musicFile').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (au.ext) { au.ext.pause(); try { URL.revokeObjectURL(au.extUrl); } catch (x) {} }
+    au.extUrl = URL.createObjectURL(f);
+    au.ext = new Audio(au.extUrl); au.ext.loop = true; au.ext.volume = 0.85;
+    au.ext.addEventListener('error', function () {
+      au.extUse = false; musicNameEl.textContent = '这个文件手机播放不了，已换回游戏自带音乐。可以试试 mp3 或 m4a 格式。'; applyMusic();
+    });
+    au.extUse = true; au.enabled = true;
+    musicNameEl.textContent = '已选择：' + f.name + '（开始比赛后循环播放）';
+    applyMusic();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { if (au.ctx && au.ctx.suspend) au.ctx.suspend(); if (au.ext) au.ext.pause(); }
+    else applyMusic();
+  });
+
+  /* ---------- screen orientation: optional forced landscape for phones that flip to portrait ---------- */
+  var app = document.getElementById('app'), forceMode = 0;
+  try { forceMode = parseInt(localStorage.getItem('race2000-orient'), 10) || 0; } catch (e) {}
+  function layout() {
+    var w = window.innerWidth, h = window.innerHeight, portrait = h > w;
+    var f = forceMode > 0 && portrait;
+    document.body.classList.toggle('force', f);
+    if (f) {
+      app.style.width = h + 'px'; app.style.height = w + 'px';
+      app.style.transform = forceMode === 1 ? 'translate(' + w + 'px, 0) rotate(90deg)' : 'translate(0, ' + h + 'px) rotate(-90deg)';
+      app.style.paddingLeft = forceMode === 1 ? 'env(safe-area-inset-top, 0px)' : 'env(safe-area-inset-bottom, 0px)';
+      app.style.paddingRight = forceMode === 1 ? 'env(safe-area-inset-bottom, 0px)' : 'env(safe-area-inset-top, 0px)';
+    } else {
+      ['width', 'height', 'transform', 'paddingLeft', 'paddingRight'].forEach(function (k) { app.style[k] = ''; });
+    }
+    document.body.classList.toggle('land', f || (!portrait && h <= 560));
+    resize();
+  }
+  var oBtns = document.querySelectorAll('#orient button');
+  function syncO() { oBtns.forEach(function (b) { b.setAttribute('aria-checked', parseInt(b.getAttribute('data-o'), 10) === forceMode ? 'true' : 'false'); }); }
+  oBtns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      forceMode = parseInt(b.getAttribute('data-o'), 10);
+      try { localStorage.setItem('race2000-orient', String(forceMode)); } catch (e) {}
+      syncO(); layout();
+    });
+  });
+  syncO();
+  function tryLandscape() {
+    try {
+      if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches && document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().then(function () {
+          if (screen.orientation && screen.orientation.lock) return screen.orientation.lock('landscape');
+        }).catch(function () {});
+      }
+    } catch (e) {}
+  }
 
   /* ---------- HUD ---------- */
   var barEl = document.getElementById('bar'), dots = [];
@@ -688,7 +849,8 @@ body {
     W = st.clientWidth; H = st.clientHeight;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   }
-  window.addEventListener('resize', resize);
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', function () { setTimeout(layout, 250); });
 
   function drawCar(c) {
     ctx.save();
@@ -793,7 +955,7 @@ body {
     update(dt); render(); hud();
     requestAnimationFrame(frame);
   }
-  resize(); reset(); showBest();
+  layout(); reset(); showBest();
   requestAnimationFrame(frame);
 })();
 </script>

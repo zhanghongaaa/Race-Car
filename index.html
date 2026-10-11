@@ -225,7 +225,7 @@ body.land #tower { top: 54px; }
       <label class="check" for="music"><input type="checkbox" id="music" checked> 背景音乐</label>
       <label class="filebtn" for="musicFile">选择我自己的音乐文件</label>
       <input type="file" id="musicFile" class="vh" accept="audio/*">
-      <span class="small" id="musicName">不选的话，会播放游戏自带的原创赛车音乐。选了就循环播放你的文件。</span>
+      <span class="small" id="musicName">不选的话，会播放游戏自带的原创赛车音乐。选了就循环播放你的文件。iPhone 没声音时，请先检查侧面的静音拨键，并把音量调大。</span>
       <p class="small">键盘：← → 转向，↑ 油门，↓ 刹车。手机：用屏幕两侧的按钮。弯前记得松油门，冲出赛道会明显变慢。</p>
       <p class="small" id="best"></p>
       <p id="nojs">如果这行字一直在，说明当前打开方式没有运行脚本（比如预览窗口或某些内置浏览器）。请改用 Safari、Chrome 或系统浏览器打开这个文件。</p>
@@ -749,6 +749,8 @@ body.land #tower { top: 54px; }
     if (au.ctx) return true;
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return false;
+    /* iPhone: Web Audio is muted by the side ring/silent switch unless the page declares itself as media playback */
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
     try {
       au.ctx = new AC();
       var bus = au.ctx.createGain(); bus.gain.value = 0.55; bus.connect(au.ctx.destination);
@@ -756,8 +758,26 @@ body.land #tower { top: 54px; }
       var len = Math.floor(au.ctx.sampleRate * 0.1), buf = au.ctx.createBuffer(1, len, au.ctx.sampleRate), d = buf.getChannelData(0);
       for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
       au.noise = buf;
+      /* unlock the audio engine inside the tap */
+      var sb = au.ctx.createBuffer(1, 1, 22050), ss = au.ctx.createBufferSource();
+      ss.buffer = sb; ss.connect(au.ctx.destination); ss.start(0);
     } catch (e) { au.ctx = null; return false; }
+    /* older iPhones: a silent looping <audio> element switches the page to media playback so the silent switch is ignored */
+    if (!navigator.audioSession && !au.keep) {
+      try {
+        au.keep = new Audio(silentWavUrl()); au.keep.loop = true;
+        var kp = au.keep.play(); if (kp && kp.catch) kp.catch(function () {});
+      } catch (e) {}
+    }
     return true;
+  }
+  function silentWavUrl() {
+    var n = 800, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    function s(o, t) { for (var i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); }
+    s(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); s(8, 'WAVE'); s(12, 'fmt '); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 16000, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true); s(36, 'data'); v.setUint32(40, n * 2, true);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
   }
   function tone(t, f, dur, type, vol, atk, cutoff) {
     var c = au.ctx, o = c.createOscillator(), g = c.createGain(), out = g;
@@ -802,9 +822,10 @@ body.land #tower { top: 54px; }
   function applyMusic() {
     var on = au.enabled;
     if (au.ctx) {
-      if (au.ctx.state === 'suspended' && on) au.ctx.resume();
+      if (au.ctx.state !== 'running' && on) au.ctx.resume();
       if (on && !au.extUse) startSynth(); else stopSynth();
     }
+    if (au.keep) { if (on) { var kp2 = au.keep.play(); if (kp2 && kp2.catch) kp2.catch(function () {}); } else au.keep.pause(); }
     if (au.ext) { if (on && au.extUse) { var pr = au.ext.play(); if (pr && pr.catch) pr.catch(function () {}); } else au.ext.pause(); }
     document.getElementById('mute').textContent = on ? '♪ 开' : '♪ 关';
     document.getElementById('music').checked = on;
@@ -966,7 +987,7 @@ body.land #tower { top: 54px; }
   }
   function resetMpUi() { setMpUi('choose'); mpSay(MP_INTRO); }
   function unlockAudio() {
-    if (au.enabled && !au.extUse && audioInit() && au.ctx.state === 'suspended') au.ctx.resume();
+    if (au.enabled && !au.extUse && audioInit() && au.ctx.state !== 'running') au.ctx.resume();
   }
 
   function netConnect(will, onReady, onFail) {

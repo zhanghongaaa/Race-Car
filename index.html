@@ -171,6 +171,7 @@ body.land #tower { top: 54px; }
 #orient button { font-size: 12px; padding: 9px 2px; }
 @media (max-width: 420px) { #tower { font-size: 11px; min-width: 94px; } #lights span { width: 18px; height: 18px; } }
 .roomcode { font-family: var(--display); font-size: 44px; font-weight: 700; letter-spacing: 0.2em; margin: 0 0 10px; color: var(--paper-ink); }
+.seg.five { grid-template-columns: repeat(5, 1fr); }
 .joinrow { display: flex; gap: 8px; margin-bottom: 12px; }
 .joinrow input { flex: 1; min-width: 0; font: inherit; font-size: 20px; padding: 10px; border-radius: 8px; border: 2px solid #b8c3c9; text-align: center; letter-spacing: 0.15em; background: #fff; color: var(--paper-ink); }
 .joinrow .btn { width: auto; margin: 0; padding: 10px 18px; }
@@ -230,17 +231,26 @@ body.land #tower { top: 54px; }
       <p class="small" id="best"></p>
       <p id="nojs">如果这行字一直在，说明当前打开方式没有运行脚本（比如预览窗口或某些内置浏览器）。请改用 Safari、Chrome 或系统浏览器打开这个文件。</p>
       <button class="btn" id="startBtn" type="button">开始比赛（单人）</button>
-      <button class="btn alt" id="mpBtn" type="button">联机对战（2 人）</button>
+      <button class="btn alt" id="mpBtn" type="button">联机对战（2–6 人）</button>
     </div>
     <div class="card" id="mpCard" hidden>
-      <p class="eyebrow">ONLINE · 2 PLAYERS</p>
+      <p class="eyebrow">ONLINE · 2–6 PLAYERS</p>
       <h2>联机对战</h2>
       <p id="mpStatus"></p>
       <div id="mpHostBox" hidden>
         <p class="group-label">房间号（告诉好友）</p>
         <p class="roomcode" id="roomCode">----</p>
+        <p class="group-label">房间里的玩家：<span id="roomCnt">1 / 4</span></p>
       </div>
       <div id="mpChoose">
+        <p class="group-label" id="caplabel">房间人数（含你，2 到 6 人）</p>
+        <div class="seg five" role="radiogroup" aria-labelledby="caplabel" id="capSeg">
+          <button type="button" role="radio" aria-checked="false" data-c="2">2</button>
+          <button type="button" role="radio" aria-checked="false" data-c="3">3</button>
+          <button type="button" role="radio" aria-checked="true" data-c="4">4</button>
+          <button type="button" role="radio" aria-checked="false" data-c="5">5</button>
+          <button type="button" role="radio" aria-checked="false" data-c="6">6</button>
+        </div>
         <button class="btn" id="mpCreate" type="button">创建房间</button>
         <p class="group-label" style="margin-top:14px">或输入房间号加入</p>
         <div class="joinrow">
@@ -388,6 +398,7 @@ body.land #tower { top: 54px; }
   var cars = [], player, order = [];
   var state = 'menu', cdT = 0, raceT = 0, resT = 0;
   var mode = 'solo'; /* solo | host | guest */
+  var finWait = 0, online = { me: 0, seats: [] };
 
   function makeCar(def, slot, isPlayer) {
     var row = Math.floor(slot / 2), col = slot % 2;
@@ -415,18 +426,22 @@ body.land #tower { top: 54px; }
         cars.push(cc);
       });
     } else {
-      /* online: cars[0] me, cars[1] the friend, cars[2..5] the four computer cars (simulated by the host) */
-      var meSlot = mode === 'host' ? 2 : 3, rvSlot = mode === 'host' ? 3 : 2, slots2 = [0, 1, 4, 5];
-      player = makeCar({ name: '你', c1: '#ffb000', c2: '#141b1f', skill: 1 }, meSlot, true);
-      cars.push(player);
-      var rv = makeCar({ name: '好友', c1: '#e0457b', c2: '#ffffff', skill: 0.95 }, rvSlot, false);
-      rv.ai = false; rv.net = true; rv.isRival = true;
-      cars.push(rv);
-      for (var i2 = 0; i2 < 4; i2++) {
-        var cc2 = makeCar(AI_DEF[i2], slots2[i2], false);
-        cc2.skill = AI_DEF[i2].skill * DIFF_MUL[diff];
-        cc2.net = (mode === 'guest');
-        cars.push(cc2);
+      /* online: cars are indexed by seat (0 = host). Humans sit in the seats the host announced, every other seat is a computer car. */
+      var aiN = 0;
+      for (var s6 = 0; s6 < 6; s6++) {
+        var cc3;
+        if (online.seats.indexOf(s6) >= 0) {
+          var isMe = (s6 === online.me);
+          cc3 = makeCar({ name: isMe ? '你' : '玩家' + (s6 + 1), c1: SEATC[s6], c2: '#141b1f', skill: 0.95 }, s6, isMe);
+          cc3.isHuman = true; cc3.seat = s6;
+          if (isMe) player = cc3; else { cc3.ai = false; cc3.net = true; }
+        } else {
+          var d3 = AI_DEF[aiN++];
+          cc3 = makeCar(d3, s6, false);
+          cc3.skill = d3.skill * DIFF_MUL[diff];
+          cc3.net = (mode === 'guest');
+        }
+        cars.push(cc3);
       }
     }
     order = cars.slice();
@@ -638,7 +653,7 @@ body.land #tower { top: 54px; }
       if (!c.fin && c.dist >= RACE) {
         c.fin = true;
         c.finT = raceT - dt * (c.dist - RACE) / Math.max(c.dist - prev, 1e-6);
-        if (c.isPlayer) { state = 'finished'; resT = 1.4; c.ai = true; c.off = 0; c.offT = 0; c.baseOff = 0; }
+        if (c.isPlayer) { state = 'finished'; resT = 1.4; finWait = 0; if (mode !== 'solo') toast('你已冲线！等其他玩家…', 4000); c.ai = true; c.off = 0; c.offT = 0; c.baseOff = 0; }
       }
     }
     for (var a = 0; a < cars.length; a++) for (var b = a + 1; b < cars.length; b++) collide(cars[a], cars[b]);
@@ -649,7 +664,8 @@ body.land #tower { top: 54px; }
       return q.dist - p.dist;
     });
     if (state === 'finished') {
-      resT -= dt;
+      resT -= dt; finWait += dt;
+      if (mode !== 'solo' && finWait < 10 && cars.some(function (c) { return c.isHuman && !c.isPlayer && !c.fin; })) resT = Math.max(resT, 0.3);
       if (resT <= 0) { showResults(); state = 'results'; }
     }
   }
@@ -964,8 +980,10 @@ body.land #tower { top: 54px; }
     ws.onclose = function () { if (ping) { clearInterval(ping); ping = null; } var was = self.connected; self.connected = false; if (self.onclose) self.onclose(was); };
   }
 
-  var NET = { client: null, code: '', role: '', id: Math.random().toString(36).slice(2, 10), peerId: null, joined: false, sentJoin: false, claimed: false, collide: false, lastRx: 0, oneWay: 0.08, rtt: 0, sendT: 0, hb: null, gt: null, hbN: 0 };
-  var MP_INTRO = '两台手机或电脑打开同一个网页：一人创建房间，另一人输入房间号加入。赛道上仍有 4 辆电脑赛车。联机需要网络能访问公共联机服务器。';
+  var capSel = 4;
+  var NET = { client: null, code: '', role: '', id: Math.random().toString(36).slice(2, 10), peers: {}, cap: 4, seat: 0, joined: false, sentJoin: false, claimed: false, collide: false, lastRx: 0, oneWay: 0.08, rtt: 0, sendT: 0, hb: null, gt: null, hbN: 0 };
+  var MP_INTRO = '2 到 6 位玩家打开同一个网页：一人创建房间并选好人数，其他人输入房间号加入。没坐满的位置由电脑赛车补上，赛道上始终是 6 辆车。联机需要网络能访问公共联机服务器。';
+  var SEATC = ['#ffb000', '#e0457b', '#7bd34a', '#00b8d9', '#ff7a2f', '#b9a2ff'];
   var mpSayEl = document.getElementById('mpStatus');
   var toastEl = document.getElementById('toast'), toastTimer = 0;
   function mpSay(t) { mpSayEl.textContent = t; }
@@ -977,13 +995,25 @@ body.land #tower { top: 54px; }
     if (!c || !c.connected) return;
     try { c.publish(topic(s), obj === null ? '' : JSON.stringify(obj), !!retain); } catch (e) {}
   }
-  function publishH() { pub('h', { id: NET.id, n: ++NET.hbN, st: NET.joined ? 'full' : 'lobby' }, true); }
+  function peerIds() { return Object.keys(NET.peers); }
+  function peerCount() { return peerIds().length; }
+  function publishH() { pub('h', { id: NET.id, n: ++NET.hbN, st: (peerCount() + 1 >= NET.cap ? 'full' : 'lobby'), cap: NET.cap, cnt: peerCount() + 1 }, true); }
   function setMpUi(stage) {
     document.getElementById('mpChoose').hidden = (stage !== 'choose');
-    document.getElementById('mpHostBox').hidden = !(stage === 'host-wait' || stage === 'host-ready');
-    var st = document.getElementById('mpStart');
-    st.hidden = !(stage === 'host-wait' || stage === 'host-ready');
-    st.disabled = (stage !== 'host-ready');
+    document.getElementById('mpHostBox').hidden = (stage !== 'host');
+    document.getElementById('mpStart').hidden = (stage !== 'host');
+  }
+  function hostUi() {
+    var cnt = peerCount() + 1, st = document.getElementById('mpStart');
+    document.getElementById('roomCnt').textContent = cnt + ' / ' + NET.cap;
+    st.disabled = cnt < 2;
+    st.textContent = cnt >= NET.cap ? '开始比赛' : '开始比赛（空位由电脑补上）';
+    if (cnt < 2) mpSay('把房间号告诉好友，等对方加入…');
+    else if (cnt >= NET.cap) mpSay('人到齐了！点「开始比赛」出发。');
+    else mpSay('已有 ' + cnt + ' 位玩家。可以继续等人，也可以现在开始，空位由电脑补上。');
+  }
+  function guestMsg(cnt, cap) {
+    mpSay('已加入房间 ' + NET.code + '，你是 ' + (NET.seat + 1) + ' 号玩家。' + (cnt ? '房间里现在有 ' + cnt + ' 人' + (cap ? '（最多 ' + cap + ' 人）' : '') + '。' : '') + '等房主开始比赛…');
   }
   function resetMpUi() { setMpUi('choose'); mpSay(MP_INTRO); }
   function unlockAudio() {
@@ -1014,10 +1044,13 @@ body.land #tower { top: 54px; }
       try { if (NET.role === 'host' && NET.claimed) c.publish(topic('h'), '', true); } catch (e) {}
       c.end();
     }
-    NET.role = ''; NET.joined = false; NET.peerId = null; NET.claimed = false; NET.collide = false; NET.sentJoin = false; NET.rtt = 0; NET.lastRx = 0;
+    NET.role = ''; NET.joined = false; NET.peers = {}; NET.seat = 0; NET.claimed = false; NET.collide = false; NET.sentJoin = false; NET.rtt = 0; NET.lastRx = 0;
   }
   function leaveMP() {
-    if (NET.client && NET.joined) pub(NET.role === 'host' ? 'dn' : 'up', { t: 'bye', id: NET.id });
+    if (NET.client) {
+      if (NET.role === 'host') pub('dn', { t: 'bye' });
+      else if (NET.joined) pub('up', { t: 'bye', id: NET.id });
+    }
     leaveNet(); mode = 'solo';
     document.getElementById('leave').hidden = true;
   }
@@ -1026,7 +1059,7 @@ body.land #tower { top: 54px; }
   function mpCreate(tries) {
     leaveNet(); tries = tries || 0;
     unlockAudio();
-    NET.role = 'host'; NET.code = genCode(); NET.collide = false; NET.claimed = false;
+    NET.role = 'host'; NET.code = genCode(); NET.collide = false; NET.claimed = false; NET.cap = capSel; NET.peers = {};
     mpSay('正在连接联机服务器…'); setMpUi('busy');
     netConnect({ topic: topic('h'), payload: '', retain: true }, function (c) {
       c.subscribe([topic('h'), topic('up')]);
@@ -1038,9 +1071,9 @@ body.land #tower { top: 54px; }
           return;
         }
         NET.claimed = true; publishH();
-        NET.hb = setInterval(publishH, 5000);
+        NET.hb = setInterval(function () { publishH(); checkPeers(); }, 5000);
         document.getElementById('roomCode').textContent = NET.code;
-        setMpUi('host-wait'); mpSay('把房间号告诉好友，等对方加入…');
+        setMpUi('host'); hostUi();
       }, 900);
     }, function () { mpSay('连接联机服务器失败。请检查网络后重试（有些网络会屏蔽联机服务器）。'); leaveNet(); resetMpUi(); });
   }
@@ -1059,9 +1092,13 @@ body.land #tower { top: 54px; }
     }, function () { mpSay('连接联机服务器失败。请检查网络后重试（有些网络会屏蔽联机服务器）。'); leaveNet(); resetMpUi(); });
   }
   function hostStart() {
-    if (!NET.joined) { toast('还没有好友在房间里'); return; }
-    mode = 'host'; NET.lastRx = performance.now();
-    pub('dn', { t: 'start', d: diff });
+    var ids = peerIds();
+    if (!ids.length) { toast('还没有好友在房间里'); return; }
+    var seats = [0], now = performance.now();
+    ids.forEach(function (id) { seats.push(NET.peers[id].seat); NET.peers[id].lastRx = now; });
+    seats.sort(function (a, b) { return a - b; });
+    mode = 'host'; online.me = 0; online.seats = seats;
+    pub('dn', { t: 'start', d: diff, hs: seats });
     beginRace(0);
   }
 
@@ -1078,36 +1115,59 @@ body.land #tower { top: 54px; }
     else if (NET.role === 'guest' && suffix === 'dn') guestRx(m);
   }
   function hostRx(m) {
+    var now = performance.now();
     if (m.t === 'join') {
-      if (!NET.joined) {
-        NET.joined = true; NET.peerId = m.id; NET.lastRx = performance.now();
-        pub('dn', { t: 'welcome', to: m.id }); publishH();
-        setMpUi('host-ready'); mpSay('好友已加入！点「开始比赛」就能出发。');
-      } else if (NET.peerId === m.id) pub('dn', { t: 'welcome', to: m.id });
-      else pub('dn', { t: 'full', to: m.id });
+      var ex = NET.peers[m.id];
+      if (ex) { pub('dn', { t: 'welcome', to: m.id, seat: ex.seat, cnt: peerCount() + 1, cap: NET.cap }); return; }
+      if (mode === 'host' && (state === 'countdown' || state === 'racing' || state === 'finished')) { pub('dn', { t: 'busy', to: m.id }); return; }
+      var used = {}, seat = -1, k;
+      peerIds().forEach(function (id) { used[NET.peers[id].seat] = true; });
+      for (k = 1; k < NET.cap; k++) if (!used[k]) { seat = k; break; }
+      if (seat < 0) { pub('dn', { t: 'full', to: m.id }); return; }
+      NET.peers[m.id] = { seat: seat, lastRx: now }; NET.joined = true;
+      pub('dn', { t: 'welcome', to: m.id, seat: seat, cnt: peerCount() + 1, cap: NET.cap });
+      pub('dn', { t: 'roster', cnt: peerCount() + 1, cap: NET.cap });
+      publishH(); hostUi();
       return;
     }
-    if (!NET.joined || m.id !== NET.peerId) return;
-    NET.lastRx = performance.now();
-    if (m.t === 's') gotState(m, true);
-    else if (m.t === 'p') pub('dn', { t: 'q', ts: m.ts, to: m.id });
-    else if (m.t === 'bye') peerLost(false);
+    var pr = NET.peers[m.id];
+    if (!pr) { if (m.t === 'p') pub('dn', { t: 'kicked', to: m.id }); return; }
+    pr.lastRx = now;
+    if (m.t === 's') {
+      var car = cars[pr.seat];
+      if (mode === 'host' && car && car.isHuman && car.net) {
+        setSnap(car, m.m);
+        if (m.rtt) car.ow = clamp(m.rtt / 2000, 0.02, 0.4);
+      }
+    } else if (m.t === 'p') pub('dn', { t: 'q', ts: m.ts, to: m.id });
+    else if (m.t === 'bye') dropPeer(m.id, false);
   }
   function guestRx(m) {
     if (m.to && m.to !== NET.id) return;
-    if (m.t === 'full') { mpSay('这个房间已经有两位玩家了。'); leaveNet(); resetMpUi(); return; }
+    if (m.t === 'full') { mpSay('这个房间已经坐满了。'); leaveNet(); resetMpUi(); return; }
+    if (m.t === 'busy') { mpSay('这个房间正在比赛，请等这一局结束后再加入。'); leaveNet(); resetMpUi(); return; }
     if (m.t === 'welcome') {
+      NET.seat = m.seat | 0;
       if (NET.joined) return;
       NET.joined = true; clearTimeout(NET.gt); NET.lastRx = performance.now();
-      setMpUi('busy'); mpSay('已加入房间 ' + NET.code + '。等房主开始比赛…');
-      var sendPing = function () { pub('up', { t: 'p', id: NET.id, ts: Date.now() }); };
+      setMpUi('busy'); guestMsg(m.cnt, m.cap);
+      var sendPing = function () {
+        pub('up', { t: 'p', id: NET.id, ts: Date.now() });
+        if (NET.lastRx && performance.now() - NET.lastRx > 8000) peerLost(false);
+      };
       sendPing(); NET.hb = setInterval(sendPing, 1500);
       return;
     }
     if (!NET.joined) return;
     NET.lastRx = performance.now();
-    if (m.t === 'start') { diff = m.d | 0; mode = 'guest'; beginRace(NET.oneWay); }
-    else if (m.t === 's') gotState(m, false);
+    if (m.t === 'start') {
+      if (!m.hs || m.hs.indexOf(NET.seat) < 0) return;
+      diff = m.d | 0; mode = 'guest'; online.me = NET.seat; online.seats = m.hs.slice();
+      beginRace(NET.oneWay);
+    } else if (m.t === 's') gotState(m);
+    else if (m.t === 'roster') { if (!document.getElementById('mpCard').hidden) guestMsg(m.cnt, m.cap); }
+    else if (m.t === 'drop') toast('玩家 ' + ((m.seat | 0) + 1) + ' 已离开，赛车改由电脑控制');
+    else if (m.t === 'kicked') { toast('你掉线太久，已被移出房间', 4000); leaveMP(); toMenu(); }
     else if (m.t === 'q') {
       var rtt = (Date.now() - m.ts) / 1000;
       if (rtt > 0 && rtt < 3) { NET.rtt = NET.rtt ? NET.rtt * 0.7 + rtt * 0.3 : rtt; NET.oneWay = clamp(NET.rtt / 2, 0.02, 0.4); }
@@ -1122,11 +1182,9 @@ body.land #tower { top: 54px; }
     if (!c.snap) { c.x = p[0]; c.y = p[1]; c.angle = p[2]; c.speed = p[3]; c.dist = p[4]; }
     c.snap = { x: p[0], y: p[1], a: p[2], v: p[3], d: p[4], f: p[5], ft: p[6], t: performance.now() };
   }
-  function gotState(m, fromGuest) {
-    if (mode === 'solo' || cars.length < 6 || !cars[1].isRival) return;
-    setSnap(cars[1], m.m);
-    if (fromGuest) { if (m.rtt) NET.oneWay = clamp(m.rtt / 2000, 0.02, 0.4); }
-    else if (m.a) for (var i = 0; i < 4; i++) setSnap(cars[2 + i], m.a[i]);
+  function gotState(m) {
+    if (mode !== 'guest' || !m.m || cars.length !== 6) return;
+    for (var i = 0; i < 6; i++) if (i !== online.me && m.m[i]) setSnap(cars[i], m.m[i]);
   }
   function locateFull(c) {
     var best = 1e12, bi = 0;
@@ -1139,7 +1197,8 @@ body.land #tower { top: 54px; }
   function netStep(c, dt) {
     var s = c.snap;
     if (!s) return;
-    var lead = Math.min(0.3, (performance.now() - s.t) / 1000) + NET.oneWay;
+    var ow = mode === 'host' ? (c.ow || NET.oneWay) : ((c.isHuman && c.seat !== 0) ? NET.oneWay * 2 : NET.oneWay);
+    var lead = Math.min(0.3, (performance.now() - s.t) / 1000) + ow;
     var qx = s.x + Math.cos(s.a) * s.v * lead, qy = s.y + Math.sin(s.a) * s.v * lead, k = Math.min(1, dt * 14);
     c.x += (qx - c.x) * k; c.y += (qy - c.y) * k;
     c.angle += wrapA(s.a - c.angle) * k;
@@ -1148,28 +1207,57 @@ body.land #tower { top: 54px; }
     locateFull(c);
   }
   function refDist() {
-    var r = cars[1];
-    if (mode !== 'solo' && r && r.isRival && r.net) return (player.dist + r.dist) / 2;
-    return player.dist;
+    if (mode === 'solo') return player.dist;
+    var sum = 0, n = 0;
+    cars.forEach(function (c) { if (c.isHuman) { sum += c.dist; n++; } });
+    return n ? sum / n : player.dist;
   }
   function netTick(dt) {
-    if (mode === 'solo' || !NET.joined || !NET.client) return;
+    if (mode === 'solo' || !NET.client) return;
     NET.sendT += dt;
-    if (NET.sendT >= 0.066) {
+    if (NET.sendT >= 0.08) {
       NET.sendT = 0;
-      if (mode === 'host') pub('dn', { t: 's', m: pack(cars[0]), a: [pack(cars[2]), pack(cars[3]), pack(cars[4]), pack(cars[5])] });
-      else pub('up', { t: 's', id: NET.id, m: pack(cars[0]), rtt: Math.round(NET.rtt * 1000) });
+      if (mode === 'host') { if (NET.joined) pub('dn', { t: 's', m: cars.map(pack) }); }
+      else if (NET.joined) pub('up', { t: 's', id: NET.id, m: pack(player), rtt: Math.round(NET.rtt * 1000) });
     }
-    if (NET.lastRx && performance.now() - NET.lastRx > 6000) peerLost(false);
+    if (mode === 'host') checkPeers();
+    else if (NET.lastRx && performance.now() - NET.lastRx > 6000) peerLost(false);
+  }
+  function checkPeers() {
+    var now = performance.now();
+    peerIds().forEach(function (id) { if (now - NET.peers[id].lastRx > 6000) dropPeer(id, true); });
+  }
+  function dropPeer(id, timedOut) {
+    var p = NET.peers[id];
+    if (!p) return;
+    delete NET.peers[id]; NET.joined = peerCount() > 0;
+    var seat = p.seat, c = cars[seat];
+    var racing = mode === 'host' && cars.length === 6 && c && c.isHuman && c.net && (state === 'countdown' || state === 'racing' || state === 'finished' || state === 'results');
+    var who = '玩家 ' + (seat + 1) + (timedOut ? ' 掉线了' : ' 已离开');
+    if (racing) {
+      c.net = false; c.ai = true; c.skill = 0.93; c.off = 0; c.offT = 0; c.baseOff = 0;
+      pub('dn', { t: 'drop', seat: seat });
+      toast(who + '，赛车改由电脑控制');
+    } else {
+      pub('dn', { t: 'roster', cnt: peerCount() + 1, cap: NET.cap });
+      toast(who);
+    }
+    publishH(); hostUi();
   }
   function peerLost(connLost) {
     var inLobby = state === 'menu' && !panel.hidden && !document.getElementById('mpCard').hidden;
-    if (inLobby) { mpSay(connLost ? '和联机服务器的连接断开了，请重试。' : '好友离开了房间。'); leaveNet(); resetMpUi(); return; }
-    if (mode === 'host') {
-      var r = cars[1];
-      if (r && r.isRival && r.net) { r.net = false; r.ai = true; r.skill = 0.93; r.off = 0; r.offT = 0; r.baseOff = 0; }
+    if (inLobby) {
+      mpSay(connLost ? '和联机服务器的连接断开了，请重试。' : (NET.role === 'host' ? '好友都离开了房间。' : '房主离开了房间。'));
+      leaveNet(); resetMpUi(); return;
+    }
+    if (NET.role === 'host') {
+      peerIds().forEach(function (id) {
+        var p = NET.peers[id], c = cars[p.seat];
+        delete NET.peers[id];
+        if (c && c.isHuman && c.net) { c.net = false; c.ai = true; c.skill = 0.93; c.off = 0; c.offT = 0; c.baseOff = 0; }
+      });
       NET.joined = false;
-      toast(connLost ? '联机连接断开，好友的赛车改由电脑控制' : '好友已离开，他的赛车改由电脑控制');
+      toast('联机连接断开，其他玩家的赛车改由电脑控制');
     } else if (mode === 'guest') {
       toast(connLost ? '联机连接断开，比赛结束' : '房主已离开，比赛结束');
       NET.joined = false;
@@ -1180,6 +1268,13 @@ body.land #tower { top: 54px; }
   document.getElementById('mpBtn').addEventListener('click', function () {
     showCard('mpCard'); resetMpUi();
     if (!window.WebSocket) { setMpUi('busy'); mpSay('这个浏览器不支持联机。'); }
+  });
+  var capBtns = document.querySelectorAll('#capSeg button');
+  capBtns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      capSel = parseInt(b.getAttribute('data-c'), 10);
+      capBtns.forEach(function (x) { x.setAttribute('aria-checked', x === b ? 'true' : 'false'); });
+    });
   });
   document.getElementById('mpCreate').addEventListener('click', function () { mpCreate(0); });
   document.getElementById('mpJoin').addEventListener('click', mpJoin);
